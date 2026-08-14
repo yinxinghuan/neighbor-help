@@ -33,6 +33,20 @@ assert.equal(claimed.archive.requests[0].claimantUserId, 'worker-a')
 assert.equal(claimed.archive.items[0].holderUserId, 'worker-a')
 assert.equal(claimed.receipts.length, 1)
 
+const mediaAttached = applyAction(claimed.archive, {
+  ...action, actionId: 'worker-media-attach', type: 'attach_dialogue_media',
+  payload: { eventId: claimed.events[0].id, mediaUrl: 'https://cdn.aiwaves.tech/prod/first.png' },
+})
+const mediaRejected = applyAction(mediaAttached.archive, {
+  ...action, actionId: 'worker-media-reject', type: 'reject_dialogue_media',
+  payload: { attachmentEventId: mediaAttached.events[0].id, reason: 'pseudotext' },
+})
+const mediaReplaced = applyAction(mediaRejected.archive, {
+  ...action, actionId: 'worker-media-replace', type: 'attach_dialogue_media',
+  payload: { eventId: claimed.events[0].id, mediaUrl: 'https://cdn.aiwaves.tech/prod/clean.png' },
+})
+assert.equal(mediaReplaced.events[0].payload.mediaUrl, 'https://cdn.aiwaves.tech/prod/clean.png')
+
 assert.throws(() => applyAction(claimed.archive, { ...action, actionId: 'worker-action-b', actor: { id: 'worker-b', name: 'Sam' } }), (error) => error.code === 'REQUEST_UNAVAILABLE')
 
 const handed = applyAction(claimed.archive, { ...action, actionId: 'worker-handoff', type: 'handoff_request', payload: { requestId: 'req-umbrella-bus-stop' } })

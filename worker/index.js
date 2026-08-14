@@ -159,12 +159,26 @@ function applyAction(archive, action) {
     const source = archive.events.find((entry) => entry.id === action.payload.eventId);
     if (!source) throw { code: "ENTITY_NOT_FOUND" };
     if (source.actor.id !== action.actor.id) throw { code: "AUTH_REQUIRED" };
-    const existing = archive.events.find((entry) => entry.type === "dialogue_media_attached" && entry.payload.sourceEventId === source.id);
+    const rejectedIds = new Set(archive.events.filter((entry) => entry.type === "dialogue_media_rejected").map((entry) => String(entry.payload.attachmentEventId)));
+    const existing = archive.events.find((entry) => entry.type === "dialogue_media_attached" && entry.payload.sourceEventId === source.id && !rejectedIds.has(entry.id));
     if (existing) throw { code: "MEDIA_ALREADY_ATTACHED" };
     let mediaUrl;
     try { mediaUrl = new URL(clean(action.payload.mediaUrl, 800)); } catch { throw { code: "INVALID_ACTION" }; }
     if (mediaUrl.protocol !== "https:" || mediaUrl.hostname !== "cdn.aiwaves.tech") throw { code: "INVALID_ACTION" };
     events = [makeEvent(archive, action, "dialogue_media_attached", source.requestId, null, { sourceEventId: source.id, mediaUrl: mediaUrl.href })];
+  } else if (action.type === "reject_dialogue_media") {
+    const attachment = archive.events.find((entry) => entry.id === action.payload.attachmentEventId && entry.type === "dialogue_media_attached");
+    if (!attachment) throw { code: "ENTITY_NOT_FOUND" };
+    if (attachment.actor.id !== action.actor.id) throw { code: "AUTH_REQUIRED" };
+    const alreadyRejected = archive.events.some((entry) => entry.type === "dialogue_media_rejected" && entry.payload.attachmentEventId === attachment.id);
+    if (alreadyRejected) throw { code: "MEDIA_ALREADY_REJECTED" };
+    const reasons = new Set(["pseudotext", "identity", "location", "object_count", "other"]);
+    if (!reasons.has(action.payload.reason)) throw { code: "INVALID_ACTION" };
+    events = [makeEvent(archive, action, "dialogue_media_rejected", attachment.requestId, null, {
+      sourceEventId: attachment.payload.sourceEventId,
+      attachmentEventId: attachment.id,
+      reason: action.payload.reason,
+    })];
   } else {
     throw { code: "INVALID_ACTION" };
   }
@@ -258,7 +272,7 @@ export class WorldRoom extends DurableObject {
       try { result = applyAction(archive, action); }
       catch (error) {
         const code = error?.code || "INVALID_ACTION";
-        const status = code === "AUTH_REQUIRED" ? 401 : ["REQUEST_UNAVAILABLE", "ITEM_UNAVAILABLE", "VERSION_CONFLICT", "MEDIA_ALREADY_ATTACHED"].includes(code) ? 409 : 400;
+        const status = code === "AUTH_REQUIRED" ? 401 : ["REQUEST_UNAVAILABLE", "ITEM_UNAVAILABLE", "VERSION_CONFLICT", "MEDIA_ALREADY_ATTACHED", "MEDIA_ALREADY_REJECTED"].includes(code) ? 409 : 400;
         return fail(code, status);
       }
       const response = { accepted: true, duplicate: false, code: "COMMITTED", version: result.archive.version, cursor: result.archive.cursor, server_time: now, committed_events: result.events, grant_receipts: result.receipts, snapshot: result.archive };

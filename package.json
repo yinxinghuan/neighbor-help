@@ -19,7 +19,12 @@
     "test:receipts": "node --import tsx _qa/receipt-reconciliation.ts",
     "test:save-envelope": "node --import tsx _qa/save-envelope.ts",
     "test:gateway-recovery": "node --import tsx _qa/gateway-recovery.ts",
+    "test:authority:remote": "node --import tsx _qa/remote-authority.ts",
+    "qa:edit-rejected-media": "node --import tsx _qa/edit-rejected-media.ts",
+    "qa:generate-dialogue-candidate": "node --import tsx _qa/generate-dialogue-candidate.ts",
     "test:browser": "node _qa/browser-shared-world.mjs",
+    "test:browser:remote": "node _qa/browser-remote-shared-world.mjs",
+    "test:browser:release": "node _qa/browser-release-states.mjs",
     "test:worker": "node _qa/worker-rules.mjs"
   },
   "dependencies": {

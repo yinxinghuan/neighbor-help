@@ -16,6 +16,12 @@
 - `_qa/ui/neighbor-help-stale-choice-recovery-platform-layout-390x844.png`
 - `_qa/ui/neighbor-help-after-conflict-board-platform-layout-390x844.png`
 - `_qa/ui/neighbor-help-entry-platform-layout-320x568.png`
+- `_qa/ui/neighbor-help-remote-conflict-platform-layout-390x844.png`
+- `_qa/ui/neighbor-help-external-guest-390x844.png`
+- `_qa/ui/neighbor-help-reduced-motion-platform-layout-390x844.png`
+- `_qa/media/neighbor-help-important-dialogue-real-media.png`（拒绝：右下角伪签名）
+- `_qa/media/neighbor-help-important-dialogue-clean-candidate.png`（拒绝：编辑后仍有签名样符号）
+- `_qa/media/neighbor-help-important-dialogue-clean-candidate-2.png`（接受）
 
 ## 已通过
 
@@ -27,6 +33,10 @@
 - DOM 机械检查确认 `scrollWidth <= viewport`，领取后标题区域宽度不少于 70px。
 - 地点、正文、选择和当前图片来自同一状态；协议标签不进入正文。
 - 静态插画没有采用中国小区或美国郊区的默认视觉，图内无可读公告文字。
+- 真实 Worker 下两个隔离浏览器会话同时争抢最后一把雨伞，只有一个 HTTP 200，另一个收到 HTTP 409 并进入可理解恢复。
+- 真实 Media Service 的首张重要对话图因伪签名被拒；第二次编辑仍失败；第三张干净数字插画通过并替换为唯一活动附件。
+- 外部访客栏可见时入口标题、主图、承诺和主按钮仍可用；生产源码没有为访客栏永久下移平台内构图。
+- `prefers-reduced-motion: reduce` 下动画与 transition 均收束到不超过 1ms；入口和自由输入发送按钮可用键盘 Enter 激活。
 
 ## 已修复问题
 
@@ -36,9 +46,7 @@
 ## 尚未验证
 
 - `comprehension unverified`：自动化只能证明流程可执行，尚无新玩家复述“目标、重复动作、进展/失败”的真人证据。
-- `external-guest`：本轮重点是平台内构图，尚未单独保存外部访客栏状态截图。
-- 真正两台设备、真实 Durable Object、平台身份和线上 Media Service 附件链路尚未部署验证。
-- reduced-motion 与完整键盘流程尚未单独保存截图证据；代码路径保留，但发布前仍需实机复验。
+- 真实 Durable Object 和线上 Media Service 附件链路已验证；真正两台物理设备与平台签名身份尚未验证。
 
 ## 发布门禁
 

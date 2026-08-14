@@ -41,6 +41,7 @@ export type WorldEventType =
   | 'request_completed'
   | 'item_returned'
   | 'dialogue_media_attached'
+  | 'dialogue_media_rejected'
 
 export interface WorldEvent<T = Record<string, unknown>> {
   id: string
@@ -128,6 +129,7 @@ export type WorldAction =
   | (BaseAction & { type: 'complete_request'; payload: { requestId: string } })
   | (BaseAction & { type: 'return_item'; payload: { itemId: string } })
   | (BaseAction & { type: 'attach_dialogue_media'; payload: { eventId: string; mediaUrl: string } })
+  | (BaseAction & { type: 'reject_dialogue_media'; payload: { attachmentEventId: string; reason: 'pseudotext' | 'identity' | 'location' | 'object_count' | 'other' } })
 
 export type CommitCode =
   | 'COMMITTED'
@@ -139,6 +141,7 @@ export type CommitCode =
   | 'NOT_REQUEST_OWNER'
   | 'ENTITY_NOT_FOUND'
   | 'MEDIA_ALREADY_ATTACHED'
+  | 'MEDIA_ALREADY_REJECTED'
   | 'AUTH_REQUIRED'
   | 'RULESET_MISMATCH'
 

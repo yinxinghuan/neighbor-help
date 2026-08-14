@@ -242,11 +242,27 @@ export function commitWorldAction(archive: WorldArchive, action: WorldAction): C
     const source = archive.events.find((entry) => entry.id === action.payload.eventId)
     if (!source) throw new WorldRuleError('ENTITY_NOT_FOUND', 'Dialogue event not found')
     if (source.actor.id !== action.actor.id) throw new WorldRuleError('AUTH_REQUIRED', 'Only the event actor may attach its dialogue media')
-    const existing = archive.events.find((entry) => entry.type === 'dialogue_media_attached' && entry.payload.sourceEventId === source.id)
+    const rejectedIds = new Set(archive.events.filter((entry) => entry.type === 'dialogue_media_rejected').map((entry) => String(entry.payload.attachmentEventId)))
+    const existing = archive.events.find((entry) => entry.type === 'dialogue_media_attached' && entry.payload.sourceEventId === source.id && !rejectedIds.has(entry.id))
     if (existing) throw new WorldRuleError('MEDIA_ALREADY_ATTACHED', 'Dialogue event already has media')
     const mediaUrl = action.payload.mediaUrl.trim()
     if (!/^https:\/\/cdn\.aiwaves\.tech\//.test(mediaUrl)) throw new WorldRuleError('INVALID_ACTION', 'Media URL must use the AlterU media CDN')
     const committed = event(archive, action, 'dialogue_media_attached', { requestId: source.requestId, payload: { sourceEventId: source.id, mediaUrl: mediaUrl.slice(0, 800) } })
+    return commit(archive, action, requests, items, [committed], [])
+  }
+
+  if (action.type === 'reject_dialogue_media') {
+    const attachment = archive.events.find((entry) => entry.id === action.payload.attachmentEventId && entry.type === 'dialogue_media_attached')
+    if (!attachment) throw new WorldRuleError('ENTITY_NOT_FOUND', 'Dialogue media attachment not found')
+    if (attachment.actor.id !== action.actor.id) throw new WorldRuleError('AUTH_REQUIRED', 'Only the event actor may reject its dialogue media')
+    const alreadyRejected = archive.events.some((entry) => entry.type === 'dialogue_media_rejected' && entry.payload.attachmentEventId === attachment.id)
+    if (alreadyRejected) throw new WorldRuleError('MEDIA_ALREADY_REJECTED', 'Dialogue media attachment is already rejected')
+    const reasons = new Set(['pseudotext', 'identity', 'location', 'object_count', 'other'])
+    if (!reasons.has(action.payload.reason)) throw new WorldRuleError('INVALID_ACTION', 'Unsupported media rejection reason')
+    const committed = event(archive, action, 'dialogue_media_rejected', {
+      requestId: attachment.requestId,
+      payload: { sourceEventId: attachment.payload.sourceEventId, attachmentEventId: attachment.id, reason: action.payload.reason },
+    })
     return commit(archive, action, requests, items, [committed], [])
   }
 

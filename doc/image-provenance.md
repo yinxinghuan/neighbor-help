@@ -44,4 +44,19 @@
 
 ## 当前验证边界
 
-静态素材已经通过实际像素检查；运行时 Media Service 集成已通过静态校验和浏览器 mock。尚未发布 Worker，因此“公共事件提交 → 媒体任务 → CDN 附件 → 第二客户端补拉”仍需在真实权威环境做一次端到端验证。
+静态素材已经通过实际像素检查；运行时 Media Service 集成已通过静态校验、浏览器 mock 和真实权威端到端测试。
+
+### 真实重要对话媒体实验
+
+- 初始 task：`mt_4ee28673dab8aa57971e88f946d706ab`
+- Request ID：`72d1bc53-3636-4d78-a4ff-5f177ff90ec2`
+- 结果：人物、地点和一把雨伞正确，但右下角出现伪签名；拒绝。
+- 编辑 task：`mt_1c536b67848326d98b28ad74fd9c957e`
+- Request ID：`c27737d1-14ef-46c5-bfa1-82e5df5a1e4c`
+- 结果：要求移除签名后仍重新生成签名样符号；拒绝。
+- 干净重生成 task：`mt_fe749708fc97b69d5c102e073f71d18a`
+- Request ID：`bb2ac209-fadf-4a5e-b8f0-a8a2b3d5ecab`
+- 最终 URL：`https://cdn.aiwaves.tech/prod/telegram/avatar/2762780906/1786702471966354.png`
+- 结果：无伪文字、签名、Logo 或国家标识；人物表情、公交候车亭、雨天和一把雨伞正确；接受。
+
+初始坏图已经通过 `dialogue_media_rejected(reason=pseudotext)` 保留审计但退出活动状态，干净图成为同一源事件唯一活动附件；第二客户端从旧 cursor 补读到拒绝和替代两个事件。仍未验证的是平台签名身份，因为当前平台没有向自有 Worker 提供可验证证明。

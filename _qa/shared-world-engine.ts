@@ -72,13 +72,30 @@ assert.equal(attached.committedEvents[0].type, 'dialogue_media_attached')
 const secondMedia: WorldAction = { ...attachMedia, actionId: 'action-media-2', expectedVersion: attached.archive.version }
 assert.throws(() => commitWorldAction(attached.archive, secondMedia), (error) => error instanceof WorldRuleError && error.code === 'MEDIA_ALREADY_ATTACHED')
 
-const publicArchive = JSON.stringify(attached.archive)
+const rejectMedia: WorldAction = {
+  ...base(attached.archive, 'action-media-reject', 'resident-b', 'Sam'),
+  type: 'reject_dialogue_media',
+  payload: { attachmentEventId: attached.committedEvents[0].id, reason: 'pseudotext' },
+}
+const rejected = commitWorldAction(attached.archive, rejectMedia)
+assert.equal(rejected.committedEvents[0].type, 'dialogue_media_rejected')
+const repeatReject: WorldAction = { ...rejectMedia, actionId: 'action-media-repeat-reject', expectedVersion: rejected.archive.version }
+assert.throws(() => commitWorldAction(rejected.archive, repeatReject), (error) => error instanceof WorldRuleError && error.code === 'MEDIA_ALREADY_REJECTED')
+const replacementMedia: WorldAction = {
+  ...base(rejected.archive, 'action-media-replacement', 'resident-b', 'Sam'),
+  type: 'attach_dialogue_media',
+  payload: { eventId: completed.committedEvents[0].id, mediaUrl: 'https://cdn.aiwaves.tech/prod/dialogue-clean.png' },
+}
+const replaced = commitWorldAction(rejected.archive, replacementMedia)
+assert.equal(replaced.committedEvents[0].payload.mediaUrl, 'https://cdn.aiwaves.tech/prod/dialogue-clean.png')
+
+const publicArchive = JSON.stringify(replaced.archive)
 for (const privateField of ['relationship', 'affection', 'privateDialogue', 'freeInput']) {
   assert.equal(publicArchive.includes(privateField), false, `public archive leaked ${privateField}`)
 }
 
-const view = readWorld(attached.archive)
-assert.equal(view.cursor, attached.archive.events.length)
+const view = readWorld(replaced.archive)
+assert.equal(view.cursor, replaced.archive.events.length)
 assert.equal(new Set(view.recentEvents.map((entry) => entry.id)).size, view.recentEvents.length)
 assert.equal(view.requests.some((entry) => entry.status === 'completed'), true)
 

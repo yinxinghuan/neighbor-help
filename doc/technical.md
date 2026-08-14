@@ -4,7 +4,7 @@
 
 前端使用 React 18、TypeScript、Less 与 Vite 5，构建基址固定为 `./`。叙事层使用状态式 RPG reducer、结构化协议解析、电影式开场节拍与 AlterU 平台存档桥接；共享世界层使用独立 TypeScript reducer 与 gateway。正式权威后端设计为 Cloudflare Durable Object + SQLite，并通过同一游戏 UUID 下的 `/api/*` 提供服务。静态插画和运行时剧情图片统一使用 AlterU Media Service；运行时不调用 Imagine，也不调用旧 `gen-image` 接口。
 
-当前项目 UUID 为 `00c8cbf4-9fba-44b6-b895-03361f71ba34`。本地 `?local=1` 使用浏览器内共享模拟；默认生产合同由 `getGameApiBase()` 返回 `/<GAME_ID>`。本实验尚未部署，因此 Durable Object 的真实多设备运行、平台身份校验和线上媒体附件链路仍标记为未验证。
+当前项目 UUID 为 `00c8cbf4-9fba-44b6-b895-03361f71ba34`。本地 `?local=1` 使用浏览器内共享模拟；默认生产合同由 `getGameApiBase()` 返回 `/<GAME_ID>`。UUID 自托管测试站已部署并通过两个隔离浏览器会话、真实 Durable Object、回执、游标和 AlterU Media Service 附件验证。它尚未注册到游戏目录或发布 GitHub Pages 镜像；平台后端仍未提供可验证身份，因此身份模式保留为 `unverified-production-beta`。
 
 ## 2. 目录结构
 
@@ -28,7 +28,7 @@
 
 公开事件只保存委托、物品、公开演员资料、版本、游标和媒体附件；精力、耐心、熟悉度、关系、自由输入与私密对白只在个人存档。当前 Worker 只能在 `LAB_MODE` 或 `PUBLIC_BETA` 下接受写入，健康状态必须报告 `unverified-production-beta`；在平台提供可验证后端身份之前，不能宣称可抵御身份冒用。
 
-重要对话图片使用 AlterU Media Service。相同生成意图在模糊失败重试时保留同一个 `request_id`；明确重新生成才创建新意图。公共事件的媒体附件由 `event_id` 去重，只允许事件原行动者写入且 URL 必须来自 `https://cdn.aiwaves.tech/`。当前纯规则和 Worker VM 已验证一次性附件，但尚未在已部署权威环境完成端到端媒体任务验证。
+重要对话图片使用 AlterU Media Service。相同生成意图在模糊失败重试时保留同一个 `request_id`；明确重新生成才创建新意图。公共事件的媒体附件由 `event_id` 去重，只允许事件原行动者写入且 URL 必须来自 `https://cdn.aiwaves.tech/`。若像素验收失败，原行动者先追加 `dialogue_media_rejected` 审计事件，系统才允许新的活动附件。真实环境已验证“提交事件 → 真实媒体任务 → CDN 附件 → 伪签名拒绝 → 干净替代 → cursor 补读”。
 
 界面以 390×844 为主并覆盖 320×568。公告列表使用 `onClick` 保留滚动，功能图标为统一线性 SVG，关系入口保持无文字笔记本图标。中英文共享同一地域中性视觉资产；生成图不承担公告文字或地点标签。
 
@@ -40,4 +40,4 @@
 - 改共享接口：保持默认 `API_BASE = "/" + GAME_ID`，Worker 内继续接收平台剥离 UUID 后的 `/api/*`；`?api_base=` 仅供 QA。
 - 换视觉素材：静态与运行时都走 AlterU Media Service；保留 `doc/image-provenance.md` 的任务、请求和人工验收记录，不把文字烘焙进图。
 - 加正式身份能力：在 Worker 写入、回执查询与 ack 前接入后端可验证身份，并删除仅用于实验的公开 beta 放行；在此之前保持 beta 标签。
-- 部署：本项目不携带同事环境的发布流程或凭据。发布者应按自己的平台流程绑定 Durable Object/SQLite，并在真实 UUID 主站执行双玩家并发、重连、回执和媒体端到端验收。
+- 部署：本项目不携带同事环境的发布流程或凭据。当前工作区已用独立发布 Skill 建立未上架 UUID 测试站；交接包仍只含源码合同。接收方应按自己的平台流程绑定 Durable Object/SQLite，并重复双玩家并发、重连、回执和媒体端到端验收。

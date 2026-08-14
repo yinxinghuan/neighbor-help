@@ -38,7 +38,9 @@ function Entry({ cartridge, onEnter, onSelect, mode, setMode, hasSave, remoteAva
     <p className="st-entry__subtitle">{cartridge.copy.subtitle}</p>
     <figure className="st-entry__scene"><img src={cartridge.entryImage ?? cartridge.coverImage} alt="" draggable={false} /></figure>
     <p className="st-entry__promise">{cartridge.copy.promise}</p>
-    <button className="st-primary" onPointerDown={onEnter}>{hasSave ? cartridge.copy.continue : cartridge.copy.enter}<Icon name="arrow" /></button>
+    <button className="st-primary" onPointerDown={onEnter} onKeyDown={(event) => {
+      if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onEnter() }
+    }}>{hasSave ? cartridge.copy.continue : cartridge.copy.enter}<Icon name="arrow" /></button>
     {cartridges.length > 1 && <div className="st-entry__cartridges" aria-label={t(cartridge.locale, 'chooseWorld')}>
       {cartridges.map((item) => <button key={item.id} className={item.id === cartridge.id ? 'is-active' : ''} onClick={() => onSelect(item.id)}><img src={item.coverImage} alt="" draggable={false} /><span><small>{t(cartridge.locale, 'cartridge')}</small>{item.copy.title}</span></button>)}
     </div>}
@@ -237,7 +239,9 @@ function Composer({ cartridge, engine, onAct }: { cartridge: StoryCartridge; eng
     <form onSubmit={(event) => { event.preventDefault(); submit() }}>
       <Icon name="pen" />
       <input aria-label={t(cartridge.locale, 'customAction')} value={custom} onChange={(event) => setCustom(event.target.value)} placeholder={cartridge.copy.customAction} disabled={engine.busy || closedCheckpoint} maxLength={240} />
-      <button type="button" onPointerDown={submit} disabled={!custom.trim() || engine.busy || closedCheckpoint} aria-label={t(cartridge.locale, 'sendAction')}><Icon name="arrow" /></button>
+      <button type="button" onPointerDown={submit} onKeyDown={(event) => {
+        if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); submit() }
+      }} disabled={!custom.trim() || engine.busy || closedCheckpoint} aria-label={t(cartridge.locale, 'sendAction')}><Icon name="arrow" /></button>
     </form>
   </section>
 }
