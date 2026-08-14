@@ -1,0 +1,88 @@
+{
+  "$schema": "../../.agents/skills/build-stateful-story-game/assets/world-brief.schema.json",
+  "game": {
+    "id": "neighbor-help",
+    "titleZh": "邻里互助",
+    "titleEn": "Neighborly Help",
+    "mode": "open-world",
+    "languages": ["zh", "en"]
+  },
+  "experience": {
+    "playerFantasy": "You are an ordinary resident in a culturally neutral apartment community who notices small problems and helps people solve them together.",
+    "emotionalPromise": "Warm everyday encounters, clear consequences, and the quiet satisfaction of making a shared place easier to live in.",
+    "commonKnowledgeBoundary": "A present-day, internationally legible apartment community using familiar places and objects; no financial, technical, or specialist knowledge is required.",
+    "openingObjective": "Take the last shared umbrella from the lobby rack to a neighbor waiting at the bus stop."
+  },
+  "world": {
+    "fixedRules": [
+      "Every public request and unique shared item has one authoritative state visible to all players.",
+      "A parcel, spare key, umbrella, or other unique item cannot be held by two players at once.",
+      "Personal relationships and private story details never become shared-world authority.",
+      "A completed, handed-off, or unavailable request must be explained in the visible story before new choices appear."
+    ],
+    "generationRules": [
+      "AI may create ordinary residents, small domestic complications, weather, and neighborhood conversations.",
+      "Every turn must advance the chosen request, a personal relationship, a location, or a visible shared-world fact.",
+      "Choices must be feasible from the current location, custody state, known characters, and committed world version.",
+      "Conflicts recover in-world by refreshing the board and preserving the attempted intent when it remains possible."
+    ],
+    "maxActiveThreads": 3
+  },
+  "stats": [
+    { "id": "energy", "labelZh": "精力", "labelEn": "Energy", "min": 0, "max": 100, "initial": 78, "display": "bar", "dangerDirection": "low", "warningAt": 25, "dangerAt": 8, "maxDelta": 18 },
+    { "id": "patience", "labelZh": "耐心", "labelEn": "Patience", "min": 0, "max": 100, "initial": 72, "display": "bar", "dangerDirection": "low", "warningAt": 25, "dangerAt": 8, "maxDelta": 16 },
+    { "id": "familiarity", "labelZh": "熟悉度", "labelEn": "Familiarity", "min": 0, "max": 20, "initial": 1, "display": "number", "dangerDirection": "low", "warningAt": 0, "dangerAt": 0, "maxDelta": 3 }
+  ],
+  "choiceIntents": [
+    "claim or inspect a neighborhood request",
+    "carry, return, or hand off a shared item",
+    "ask a resident for help or clarify what happened"
+  ],
+  "signatureItem": {
+    "nameZh": "布质钥匙袋",
+    "nameEn": "Cloth Key Pouch",
+    "ability": "Carries one borrowed community key or small shared item with visible custody.",
+    "limitOrCost": "It can hold only one shared item and must be returned or handed off before another is claimed.",
+    "provenance": "Kept on the apartment lobby's shared shelf for residents handling community requests."
+  },
+  "danger": {
+    "minSafeTurns": 3,
+    "maxSafeTurns": 5,
+    "cooldownTurns": 2,
+    "physicalCombat": "none",
+    "methods": [
+      "ask another resident to share the task",
+      "return or hand off the held shared item",
+      "pause and choose a safer practical route"
+    ],
+    "threatPalette": [
+      "the elevator stops while a heavy parcel still needs delivery",
+      "rain begins flooding the entrance before the umbrella is returned",
+      "a medicine pickup becomes urgent while the intended helper is delayed",
+      "a neighbor's pet slips out while two residents are coordinating care",
+      "one spare key is needed by two open requests at the same time"
+    ],
+    "fallbackStatId": "energy",
+    "fallbackAmount": 12
+  },
+  "visuals": {
+    "material": "apartment",
+    "artDirection": "warm editorial gouache of a culturally neutral contemporary apartment community, muted paper colors, grounded anatomy, practical objects, and soft evening light",
+    "entryScene": "a modest apartment lobby with a shared umbrella rack and parcel shelf as the first drops of rain appear, one folded umbrella remaining, no readable text",
+    "sceneImageDirection": "grounded internationally legible neighborhood scene, culturally neutral contemporary clothing and architecture, one clear practical action, natural expressions, no UI and no readable text",
+    "itemImageDirection": "quiet evidence-style still life of one everyday shared object on warm paper or wood, object only, no people, logos, labels, or readable text"
+  },
+  "audio": {
+    "mood": "soft neighborhood ambience, distant bicycles, door chimes, light rain, and restrained warm melodic tones",
+    "bpm": 66
+  },
+  "ending": {
+    "type": "chapter-boundary",
+    "failureConsequences": [
+      "a request is handed to another resident",
+      "the player loses energy or patience",
+      "a shared item must be returned before continuing",
+      "the route changes after another player acts first"
+    ]
+  }
+}

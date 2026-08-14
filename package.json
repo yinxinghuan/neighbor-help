@@ -1,0 +1,39 @@
+{
+  "name": "neighbor-help",
+  "version": "0.8.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test:protocol": "node --import tsx _qa/protocol.ts",
+    "test:danger": "node --import tsx _qa/danger-director.ts",
+    "test:payment": "node --import tsx _qa/payment-consistency.ts",
+    "test:turn": "node --import tsx _qa/turn-consistency.ts",
+    "test:character-debut": "node --import tsx _qa/character-debut.ts",
+    "test:shared-world": "node --import tsx _qa/shared-world-engine.ts",
+    "test:receipts": "node --import tsx _qa/receipt-reconciliation.ts",
+    "test:save-envelope": "node --import tsx _qa/save-envelope.ts",
+    "test:gateway-recovery": "node --import tsx _qa/gateway-recovery.ts",
+    "test:browser": "node _qa/browser-shared-world.mjs",
+    "test:worker": "node _qa/worker-rules.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "less": "^4.2.0",
+    "playwright": "^1.62.1",
+    "tsx": "^4.23.5",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.21"
+  }
+}

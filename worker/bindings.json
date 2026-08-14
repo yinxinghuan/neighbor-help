@@ -1,0 +1,23 @@
+{
+  "bindings": [
+    {
+      "type": "durable_object_namespace",
+      "name": "WORLD",
+      "class_name": "WorldRoom"
+    },
+    {
+      "type": "plain_text",
+      "name": "LAB_MODE",
+      "text": "false"
+    },
+    {
+      "type": "plain_text",
+      "name": "PUBLIC_BETA",
+      "text": "true"
+    }
+  ],
+  "migrations": {
+    "new_tag": "v1",
+    "new_sqlite_classes": ["WorldRoom"]
+  }
+}
