@@ -92,7 +92,7 @@ if (finalState.snapshot.events.filter((entry) => entry.type === 'request_complet
 
 await winner.page.reload({ waitUntil: 'networkidle' })
 await winner.page.addStyleTag({ content: '#alteru-guest-banner{display:none!important}' })
-const resume = winner.page.getByRole('button', { name: /Continue from the latest scene/ })
+const resume = winner.page.getByRole('button', { name: 'Continue game', exact: true })
 if (await resume.count()) await resume.click()
 await winner.page.getByText(/shared board then confirms that the request is complete/).waitFor()
 if (await winner.page.getByRole('button', { name: /Claim the delivery request and pick up the last shared umbrella/ }).count()) throw new Error('reload restored a stale claim choice')
