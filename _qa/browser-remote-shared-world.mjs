@@ -46,22 +46,22 @@ const alex = await makePlayer('remote-qa-alex')
 const sam = await makePlayer('remote-qa-sam')
 
 await Promise.all([
-  alex.page.getByRole('button', { name: /Claim the request and take the last umbrella/ }).click(),
-  sam.page.getByRole('button', { name: /Claim the request and take the last umbrella/ }).click(),
+  alex.page.getByRole('button', { name: /Claim the delivery request and pick up the last shared umbrella/ }).click(),
+  sam.page.getByRole('button', { name: /Claim the delivery request and pick up the last shared umbrella/ }).click(),
 ])
 
 await Promise.all([alex.page, sam.page].map((page) => page.waitForFunction(() => {
   const text = document.body.innerText
-  return text.includes('You confirm the claim on the board') || text.includes('Another resident just changed this request')
+  return text.includes('You claim the umbrella request on the shared board') || text.includes('Another resident just changed this request')
 }, null, { timeout: 20_000 })))
-const successA = (await alex.page.locator('body').innerText()).includes('You confirm the claim on the board')
-const successB = (await sam.page.locator('body').innerText()).includes('You confirm the claim on the board')
+const successA = (await alex.page.locator('body').innerText()).includes('You claim the umbrella request on the shared board')
+const successB = (await sam.page.locator('body').innerText()).includes('You claim the umbrella request on the shared board')
 if (Number(successA) + Number(successB) !== 1) throw new Error(`expected one winner, got alex=${successA} sam=${successB}`)
 if (alex.metrics.conflicts + sam.metrics.conflicts !== 1) throw new Error('expected exactly one HTTP 409 authority conflict')
 const winner = successA ? alex : sam
 const loser = successA ? sam : alex
 await loser.page.getByText(/Another resident just changed this request/).waitFor()
-await loser.page.getByRole('button', { name: 'Shared board' }).click()
+await loser.page.getByRole('button', { name: 'Shared board', exact: true }).click()
 await loser.page.getByText(/In progress/).first().waitFor()
 await loser.page.screenshot({ path: new URL('neighbor-help-remote-conflict-platform-layout-390x844.png', out).pathname, fullPage: true })
 

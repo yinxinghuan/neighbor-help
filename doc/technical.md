@@ -10,6 +10,7 @@
 
 - `src/story/`：RPG 界面、角色卡带、叙事 reducer、选择连续性、危险导演、图片导演、语音和平台适配器。
 - `src/shared-world/engine.ts`：共享委托、唯一物品、交接、完成、事件和媒体附件的纯权威规则。
+- `src/shared-world/storyBridge.ts`：把提交后的共享实体快照映射为阶段化确定性正文、目标、地点和下一步，并清除已失效的共享行动。
 - `src/shared-world/gateway.ts`：本地模拟与远程 `/api/*` 的统一客户端接口。
 - `src/shared-world/useNeighborhoodWorld.ts`：React 侧加载、提交、冲突刷新与可见性恢复。
 - `src/shared-world/playerInventory.ts`、`useReceiptInventory.ts`：物品回执幂等合并、存档读回与确认。
@@ -17,12 +18,14 @@
 - `src/shared/runtime/media.ts`、`useGenImage.ts`：AlterU Media Service 的请求、轮询、稳定 `request_id` 与终态错误处理。
 - `worker/index.js`：Durable Object、SQLite 表、事务提交、回执、游标、媒体附件和实验身份门禁。
 - `worker/bindings.json`：Worker 绑定说明，不含部署凭据。
-- `_qa/`：纯规则、回执、存档 envelope、断线游标、Worker VM 与双玩家浏览器测试。
+- `_qa/`：纯规则、共享故事权威桥接、回执、存档 envelope、断线游标、Worker VM 与双玩家浏览器测试。
 - `doc/`：需求、视觉、界面、反馈、共享合同、媒体来源与 QA 证据。
 
 ## 3. 核心模块
 
 共享世界以 `WorldArchive.version` 做乐观并发控制，以 `action_id` 做幂等，以单调 `cursor` 做断线补拉。领取委托与领取所需唯一物品在同一个 reducer/SQLite 事务中完成；旧版本写入返回 `VERSION_CONFLICT`，刷新后不可领取则返回 `REQUEST_UNAVAILABLE`。客户端不会把失败选择静默送回无关剧情，而是追加生活化解释与仍然有效的恢复选项。
+
+共享委托的故事接入不再把成功事务重新交给模型裁决。`NeighborhoodBoard` 和正文按钮都把权威提交后的 `HelpRequest` 快照传给 `storyBridge.ts`；桥接层按 `claim / handoff / complete` 生成确定性协议内容，再由现有 story reducer 统一落入累积正文、目标、地点与选择。自由输入也由同一桥接层结合当前请求阶段、具体委托词和个人阶段 facts 解析；表达含糊且可能对应多个委托时返回开放叙事，不猜测目标。故事 facts 保存 `shared:<request_id>` 阶段标记；重进或外部更新后若发现旧领取/交接/完成按钮与权威状态冲突，客户端追加状态校正并重新枚举，不恢复提交前快照。领取保持在共享大厅，完成才移动到公交站。
 
 物品进入个人侧时由权威服务生成回执。客户端按 `receipt_id` 合并一次，写入 `neighbor-help-shared-player` 命名空间，读回确认后才 ack。主故事保存于 `neighbor-help` 命名空间；两个 hook 共享一个 cloud envelope，避免覆盖同一 `session_id` 的另一部分数据。浏览器存储全部经过 `alteruLocalStorage`，在自托管环境按 Remix session UUID 隔离。
 
@@ -36,6 +39,7 @@
 
 - 改叙事、人物、开场与选项：编辑 `src/story/cartridges/neighborHelp.ts`，并同步 `doc/requirements.md`。
 - 改共享委托、物品和规则：同时修改 `src/shared-world/engine.ts` 与 `worker/index.js`，再扩充 `_qa/shared-world-engine.ts` 和 `_qa/worker-rules.mjs`，禁止只改客户端。
+- 改共享行动正文或下一步：修改 `src/shared-world/storyBridge.ts`，并扩充 `_qa/shared-story-authority.ts`；不得把提交成功后的结果重新交给模型决定。
 - 改回执或个人物品：修改 `playerInventory.ts`、`useReceiptInventory.ts`；新增私人域必须使用新的 envelope namespace，不能新增一个覆盖整行的云存档 hook。
 - 改共享接口：保持默认 `API_BASE = "/" + GAME_ID`，Worker 内继续接收平台剥离 UUID 后的 `/api/*`；`?api_base=` 仅供 QA。
 - 换视觉素材：静态与运行时都走 AlterU Media Service；保留 `doc/image-provenance.md` 的任务、请求和人工验收记录，不把文字烘焙进图。

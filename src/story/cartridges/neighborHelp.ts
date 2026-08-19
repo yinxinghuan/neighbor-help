@@ -79,7 +79,6 @@ const shared = {
   itemImageDirection: 'warm editorial gouache still life of one ordinary shared object on pale wood or cream paper, culturally neutral, object only, no people, no signs, no labels, no letters, no logos, no readable text',
   sceneImageDirection: 'warm editorial gouache in a culturally neutral contemporary apartment community, diverse ordinary residents, grounded anatomy, practical action, soft overcast or evening light, no national signage, no uniforms, no UI, no readable text',
   sceneImageAvoid: 'Chinese gated-compound guard desks, boom barriers, security uniforms, Chinese signs, American suburban houses, national flags, readable notices, logos, or the placeholder composition',
-  transitionAnchor: 'the shared lobby notice board and umbrella rack that every resident passes',
   imageDirector: {
     maxQuietTurns: 4,
     softCooldownTurns: 2,
@@ -102,11 +101,12 @@ const shared = {
 export const neighborHelp: StoryCartridge = {
   ...shared,
   locale: 'zh',
+  transitionAnchor: '每位居民都会经过的共享大厅公告板与伞架',
   copy: {
     title: '邻里互助', subtitle: '一件小事，很多人的同一个社区',
     promise: '别人做过的事会留下来，你的关系仍然属于你。',
     enter: '走进共享大厅', continue: '继续这件小事', customAction: '也可以写下你想怎么帮忙',
-    itemImagingTitle: '共享物品正在归档', itemImagingBody: '这些物品会使用同一套社区视觉规则生成影像；生成不会阻塞委托，失败时仍保留文字与重试入口。',
+    itemImagingTitle: '个人物品正在归档', itemImagingBody: '这里展示个人物品；领取中的共享物品请到“共享公告”查看。生成不会阻塞委托，失败时仍保留文字与重试入口。',
   },
   director: storyDirector('zh'),
   dangerDirector: dangerDirector('zh'),
@@ -115,7 +115,7 @@ export const neighborHelp: StoryCartridge = {
     { id: 'patience', label: '耐心', min: 0, max: 100, initial: 72, inverse: true, display: 'bar', warningAt: 25, dangerAt: 8, maxDelta: 16 },
     { id: 'familiarity', label: '熟悉度', min: 0, max: 20, initial: 1, inverse: true, display: 'number', warningAt: 0, dangerAt: 0, maxDelta: 3 },
   ],
-  drawerLabels: { party: '居民', map: '地点', inventory: '随身物品', log: '关系簿' },
+  drawerLabels: { party: '居民', map: '地点', inventory: '个人物品', log: '关系簿' },
   opening: {
     location: '共享大厅 · 伞架', time: '周五 17:40', objective: '确认是否领取最后一把共享雨伞',
     imagePrompt: 'culturally neutral contemporary apartment lobby in light rain, shared umbrella rack with one folded dark green umbrella remaining, parcel shelf and courtyard beyond glass, warm editorial gouache on paper, ordinary international residents, no national markers, no signs, no letters, no numbers, no logos, no UI, 4:3',
@@ -127,7 +127,7 @@ export const neighborHelp: StoryCartridge = {
       { id: 'a4', kind: 'dialogue', speaker: 'Mara', tone: '认真', text: '如果你拿伞，我可以先去确认对方还在不在。或者我们把这件事留给更近的人。' },
     ],
     choices: [
-      { id: 'claim-umbrella', label: '领取委托，把最后一把雨伞送到公交站' },
+      { id: 'claim-umbrella', label: '领取送伞委托，拿起最后一把共享雨伞' },
       { id: 'coordinate-mara', label: '请 Mara 先确认位置，自己留在大厅' },
       { id: 'inspect-board', label: '先查看公告板上还有哪些邻里小事' },
     ],
@@ -146,13 +146,10 @@ export const neighborHelp: StoryCartridge = {
     { id: 'key-pouch', label: '布质钥匙袋', count: 1, detail: '一只没有文字标签的结实棉布袋，可清楚保管一件借用中的公共物品。', effect: '一次只能保管一件共享钥匙或小物；归还或交接后才能领取下一件。', lore: '它一直放在大厅的共享架上，居民用它避免把私人钥匙和公共钥匙混在一起。', metrics: [{ label: '可保管', value: '1 件' }, { label: '当前', value: '空' }], imagePrompt: 'single sturdy unbranded cotton key pouch on pale wood, culturally neutral editorial gouache still life, no tag text, no letters, no logo, object only, square' },
   ],
   demoTurns: [
-    { match: ['雨伞', '公交站', '领取'], content: `你在公告板上确认领取，伞架旁的状态线随即改变。Mara 把公交站的位置指给你，但没有碰那把已经归你保管的伞。
-[inventory: add item="共享雨伞" count="1" rarity="rare" detail="共享大厅最后一把深绿色折叠伞。" effect="送达、交接或归还前，同一把伞不能再被其他居民领取。" lore="伞柄内侧有一圈磨旧的棉线，没有名字。"]
+    { match: ['雨伞', '公交站', '领取'], content: `你在公告板上确认领取，伞架旁的状态线随即改为由你保管。Mara 把公交站的位置指给你；你仍在共享大厅，送达需要下一步单独确认。
 [widget: energy, remove: 6]
 [widget: familiarity, add: 1]
-[scene_location: "街角公交站"]
-[image_location: "街角公交站"]
-[choices: "立刻把雨伞送到公交站"|"请 Mara 在大厅留意新的消息"|"如果对方已经离开，就把雨伞带回共享大厅"]`, imagePrompt: 'culturally neutral apartment lobby in light rain, one resident taking a folded dark green umbrella while Mara in a pale raincoat points toward the street corner, warm editorial gouache, grounded natural gesture, no signs, no text, no UI, 4:3', imageSubject: 'others' },
+[choices: "拿着雨伞前往街角公交站并交给等待的住户"|"把送伞委托交接给另一位居民"|"打开共享公告查看其他委托"]`, imagePrompt: 'culturally neutral apartment lobby in light rain, one resident taking a folded dark green umbrella while Mara in a pale raincoat points toward the street corner, warm editorial gouache, grounded natural gesture, no signs, no text, no UI, 4:3', imageSubject: 'others' },
     { match: ['Mara', '确认', '位置'], content: `Mara 站到玻璃门边，先发出一条简短确认。片刻后，她抬起头，神情从专注变成放心。
 [Mara] [main] [松了一口气]: "人还在公交站，而且已经有人陪着。我们只要把伞送到就好。"
 [dialogue_focus: speaker="Mara" expression="松了一口气但仍认真核对位置"]
@@ -172,11 +169,12 @@ export const neighborHelp: StoryCartridge = {
 export const neighborHelpEn: StoryCartridge = {
   ...shared,
   locale: 'en',
+  transitionAnchor: 'the shared lobby notice board and umbrella rack that every resident passes',
   copy: {
     title: 'Neighborly Help', subtitle: 'One small task in a place everyone shares',
     promise: 'What others do remains in the world. Your relationships remain yours.',
     enter: 'Step into the shared lobby', continue: 'Continue this small task', customAction: 'Or write how you want to help',
-    itemImagingTitle: 'Shared items are being archived', itemImagingBody: 'These objects use the same community visual rules as runtime scenes. Generation never blocks a request; text and retry remain available if it fails.',
+    itemImagingTitle: 'Personal items are being archived', itemImagingBody: 'This drawer shows personal items; open the shared board for items attached to active requests. Generation never blocks a request; text and retry remain available if it fails.',
   },
   director: storyDirector('en'),
   dangerDirector: dangerDirector('en'),
@@ -185,7 +183,7 @@ export const neighborHelpEn: StoryCartridge = {
     { id: 'patience', label: 'Patience', min: 0, max: 100, initial: 72, inverse: true, display: 'bar', warningAt: 25, dangerAt: 8, maxDelta: 16 },
     { id: 'familiarity', label: 'Familiarity', min: 0, max: 20, initial: 1, inverse: true, display: 'number', warningAt: 0, dangerAt: 0, maxDelta: 3 },
   ],
-  drawerLabels: { party: 'Residents', map: 'Places', inventory: 'Carried items', log: 'Relationships' },
+  drawerLabels: { party: 'Residents', map: 'Places', inventory: 'Personal items', log: 'Relationships' },
   opening: {
     location: 'Shared Lobby · Umbrella Rack', time: 'Friday 17:40', objective: 'Decide whether to claim the last shared umbrella',
     imagePrompt: 'culturally neutral contemporary apartment lobby in light rain, shared umbrella rack with one folded dark green umbrella remaining, parcel shelf and courtyard beyond glass, warm editorial gouache on paper, ordinary international residents, no national markers, no signs, no letters, no numbers, no logos, no UI, 4:3',
@@ -197,7 +195,7 @@ export const neighborHelpEn: StoryCartridge = {
       { id: 'a4', kind: 'dialogue', speaker: 'Mara', tone: 'focused', text: 'If you take the umbrella, I can confirm they are still there. Or we can leave it for someone closer.' },
     ],
     choices: [
-      { id: 'claim-umbrella', label: 'Claim the request and take the last umbrella to the bus stop' },
+      { id: 'claim-umbrella', label: 'Claim the delivery request and pick up the last shared umbrella' },
       { id: 'coordinate-mara', label: 'Ask Mara to confirm the location while you stay in the lobby' },
       { id: 'inspect-board', label: 'Check what other neighborhood requests are open first' },
     ],
@@ -216,13 +214,10 @@ export const neighborHelpEn: StoryCartridge = {
     { id: 'key-pouch', label: 'Cloth key pouch', count: 1, detail: 'A sturdy unlabelled cotton pouch that clearly holds one borrowed shared object.', effect: 'Carries one shared key or small object at a time; return or hand it off before claiming another.', lore: 'It stays on the lobby shelf so residents do not mix shared keys with personal ones.', metrics: [{ label: 'Capacity', value: '1 item' }, { label: 'Current', value: 'Empty' }], imagePrompt: 'single sturdy unbranded cotton key pouch on pale wood, culturally neutral editorial gouache still life, no tag text, no letters, no logo, object only, square' },
   ],
   demoTurns: [
-    { match: ['umbrella', 'bus stop', 'claim'], content: `You confirm the claim on the board, and the status line beside the umbrella changes. Mara points out the bus stop without touching the umbrella now assigned to you.
-[inventory: add item="Shared umbrella" count="1" rarity="rare" detail="The last dark green folding umbrella in the shared lobby." effect="Until it is delivered, handed off, or returned, no other resident can claim this same umbrella." lore="A worn ring of cotton thread circles the inside of the handle; there is no name."]
+    { match: ['umbrella', 'bus stop', 'claim'], content: `You confirm the claim on the board, and the status line changes to show that you hold the umbrella. Mara points out the bus stop; you are still in the shared lobby, and delivery requires its own next action.
 [widget: energy, remove: 6]
 [widget: familiarity, add: 1]
-[scene_location: "Corner Bus Stop"]
-[image_location: "Corner Bus Stop"]
-[choices: "Take the umbrella to the bus stop now"|"Ask Mara to watch the lobby for updates"|"If the person has left, bring the umbrella back to the lobby"]`, imagePrompt: 'culturally neutral apartment lobby in light rain, one resident taking a folded dark green umbrella while Mara in a pale raincoat points toward the street corner, warm editorial gouache, grounded natural gesture, no signs, no text, no UI, 4:3', imageSubject: 'others' },
+[choices: "Take the umbrella to the corner bus stop and give it to the waiting resident"|"Hand the umbrella request to another resident"|"Open the shared board and inspect other requests"]`, imagePrompt: 'culturally neutral apartment lobby in light rain, one resident taking a folded dark green umbrella while Mara in a pale raincoat points toward the street corner, warm editorial gouache, grounded natural gesture, no signs, no text, no UI, 4:3', imageSubject: 'others' },
     { match: ['Mara', 'confirm', 'location'], content: `Mara steps to the glass door and sends a short confirmation. A moment later she looks up, her focus easing into relief.
 [Mara] [main] [relieved]: "They're still at the bus stop, and someone is waiting with them. We only need to get the umbrella there."
 [dialogue_focus: speaker="Mara" expression="relieved while still carefully confirming the location"]

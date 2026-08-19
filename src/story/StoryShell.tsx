@@ -10,6 +10,7 @@ import { useStoryAudio } from './audio/useStoryAudio'
 import { latestReadingAnchorId } from './engine/readingAnchor'
 import { decodeChoiceRecord, resolveNumberedChoiceInput } from './engine/choiceInput'
 import { NeighborhoodBoard, sharedConflictNarrative, sharedRecoveryChoices } from '../shared-world/NeighborhoodBoard'
+import { buildSharedCommittedOutcome, buildSharedStatusCorrection, choicesContainStaleSharedAction, classifySharedStoryAction, resolveSharedStoryTarget, sharedPhaseMarker } from '../shared-world/storyBridge'
 import { useNeighborhoodWorld } from '../shared-world/useNeighborhoodWorld'
 import type { HelpRequest } from '../shared-world/types'
 
@@ -551,44 +552,68 @@ function Game({ cartridge, mode, chatId, onSelect, onLocaleChange }: { cartridge
     audio.cue('error')
   }
 
+  const applySharedOutcome = (request: HelpRequest, action: 'claim' | 'handoff' | 'complete') => {
+    follow.current = true
+    responseAnchor.current = { from: engine.save.blocks.length }
+    audio.cue('action')
+    engine.recordSharedWorldOutcome(buildSharedCommittedOutcome(cartridge.locale, request, action))
+  }
+
   const act = async (action: string) => {
-    const isUmbrellaAction = cartridge.locale === 'zh'
-      ? /领取委托|最后一把.*雨伞|雨伞送到公交站/.test(action)
-      : /claim.*umbrella|last.*umbrella|umbrella.*bus stop/i.test(action)
-    if (!isUmbrellaAction) { advanceStory(action); return }
-    const request = neighborhood.view?.requests.find((entry) => entry.id === 'req-umbrella-bus-stop')
-    if (!request) { await neighborhood.refresh(); return }
+    if (classifySharedStoryAction(action, cartridge.locale) === 'board') { setBoardOpen(true); return }
+    let requests = neighborhood.view?.requests
+    if (!requests) requests = (await neighborhood.refresh().catch(() => null))?.view.requests
+    if (!requests) { advanceStory(action); return }
+    const target = resolveSharedStoryTarget(action, cartridge.locale, requests, neighborhood.actor.id, engine.save.facts)
+    if (!target) { advanceStory(action); return }
+    const { intent: sharedAction, request } = target
     const mine = request.claimantUserId === neighborhood.actor.id
-    if (request.status === 'open' || request.status === 'handed_off') {
+    if (sharedAction === 'claim' && (request.status === 'open' || request.status === 'handed_off')) {
       const result = await neighborhood.claim(request)
       if (!result) { recoverSharedAction(action); return }
-      advanceStory(action)
+      applySharedOutcome(result.archive.requests.find((entry) => entry.id === request.id) ?? request, 'claim')
       return
     }
-    if (request.status === 'claimed' && mine) { advanceStory(action); return }
+    if (sharedAction === 'handoff' && request.status === 'claimed' && mine) {
+      const result = await neighborhood.handoff(request.id)
+      if (!result) { recoverSharedAction(action); return }
+      applySharedOutcome(result.archive.requests.find((entry) => entry.id === request.id) ?? request, 'handoff')
+      return
+    }
+    if (sharedAction === 'complete' && request.status === 'claimed' && mine) {
+      const result = await neighborhood.complete(request.id)
+      if (!result) { recoverSharedAction(action); return }
+      applySharedOutcome(result.archive.requests.find((entry) => entry.id === request.id) ?? request, 'complete')
+      return
+    }
+    const latest = await neighborhood.refresh().catch(() => null)
+    const current = latest?.view.requests.find((entry) => entry.id === request.id) ?? request
+    const correction = buildSharedStatusCorrection(cartridge.locale, current, neighborhood.actor.id)
+    if (correction) {
+      engine.recordSharedWorldOutcome(correction)
+      audio.cue('error')
+      return
+    }
     recoverSharedAction(action)
   }
 
-  const onBoardAction = (request: HelpRequest, action: 'claim' | 'handoff' | 'complete', success: boolean) => {
-    const attempted = cartridge.locale === 'zh' ? `处理共享委托：${request.titleKey}` : `Handle shared request: ${request.titleKey}`
-    if (!success) { recoverSharedAction(attempted); return }
+  const onBoardAction = (request: HelpRequest, action: 'claim' | 'handoff' | 'complete', committedRequest: HelpRequest | null) => {
+    const attempted = cartridge.locale === 'zh' ? '处理共享公告上的委托' : 'Handle a request on the shared board'
+    if (!committedRequest) { recoverSharedAction(attempted); return }
     setBoardOpen(false)
-    if (action === 'claim') {
-      advanceStory(request.id === 'req-umbrella-bus-stop'
-        ? (cartridge.locale === 'zh' ? '领取委托，把最后一把雨伞送到公交站' : 'Claim the request and take the last umbrella to the bus stop')
-        : attempted)
-    } else if (action === 'complete') {
-      advanceStory(request.id === 'req-umbrella-bus-stop'
-        ? (cartridge.locale === 'zh' ? '把雨伞送到公交站并完成委托' : 'Deliver the umbrella to the bus stop and complete the request')
-        : attempted)
-    } else {
-      engine.recordSharedWorldRecovery(
-        attempted,
-        cartridge.locale === 'zh' ? '你把这件事和手里的公共物品交回公告板，另一位居民现在可以从同一处接手。' : 'You return the request and its shared item to the board. Another resident can now take over from the same point.',
-        sharedRecoveryChoices(cartridge.locale),
-      )
-    }
+    applySharedOutcome(committedRequest, action)
   }
+
+  useEffect(() => {
+    if (!engine.loaded || !engine.save.entered) return
+    const request = neighborhood.view?.requests.find((entry) => entry.id === 'req-umbrella-bus-stop')
+    if (!request || request.status === 'open') return
+    const marker = sharedPhaseMarker(request, neighborhood.actor.id)
+    const stale = choicesContainStaleSharedAction(engine.save.choices, request, cartridge.locale, neighborhood.actor.id)
+    if (!stale || engine.save.facts[`shared:${request.id}`] === marker) return
+    const correction = buildSharedStatusCorrection(cartridge.locale, request, neighborhood.actor.id)
+    if (correction) engine.recordSharedWorldOutcome(correction)
+  }, [cartridge.locale, engine.loaded, engine.save.choices, engine.save.entered, engine.save.facts, neighborhood.actor.id, neighborhood.view?.version])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGenImage } from '../shared/runtime/useGenImage'
 import { useGameSave } from '../shared/save/useGameSave'
+import type { SharedStoryOutcome } from '../shared-world/storyBridge'
 import { aigramAdapter } from './adapters/aigram'
 import { mockAdapter } from './adapters/mock'
 import { remoteAdapter } from './adapters/remote'
@@ -348,6 +349,20 @@ export function useStoryEngine(cartridge: StoryCartridge, initialMode: StoryMode
       }
     })
   }, [commit])
+  const recordSharedWorldOutcome = useCallback((outcome: SharedStoryOutcome) => {
+    const activeCartridge = resolveCartridge(cartridge.id, cartridge.locale)
+    const parsed = parseStoryProtocol(outcome.content, activeCartridge.locale)
+    commit((current) => {
+      if (current.facts[outcome.marker.key] === outcome.marker.value && current.lastActionId === outcome.actionLabel) return current
+      const next = applyParsedScene(
+        localizeKnownState(current, cartridge, activeCartridge),
+        parsed,
+        activeCartridge,
+        outcome.actionLabel,
+      )
+      return { ...next, facts: { ...next.facts, [outcome.marker.key]: outcome.marker.value } }
+    })
+  }, [cartridge, commit])
   const restartWorld = useCallback(() => {
     if (busy) return
     imageAttempt.current = `restart:${Date.now()}`
@@ -364,5 +379,5 @@ export function useStoryEngine(cartridge: StoryCartridge, initialMode: StoryMode
     window.history.replaceState({}, '', url)
     setMode(url.searchParams.get('story_mode') === 'demo' ? 'demo' : 'aigram')
   }, [busy, cartridge, persist])
-  return { save, mode, setMode, busy, progress, error, pendingAction, canRetry: Boolean(failedAction), enter, act, retryAction, useAigramFallback, retryImage, prepareInventoryImages, recordSharedWorldRecovery, restartWorld, loaded: cloud.loaded && seeded.current, clear: cloud.clear }
+  return { save, mode, setMode, busy, progress, error, pendingAction, canRetry: Boolean(failedAction), enter, act, retryAction, useAigramFallback, retryImage, prepareInventoryImages, recordSharedWorldRecovery, recordSharedWorldOutcome, restartWorld, loaded: cloud.loaded && seeded.current, clear: cloud.clear }
 }

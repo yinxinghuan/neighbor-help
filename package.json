@@ -16,6 +16,7 @@
     "test:turn": "node --import tsx _qa/turn-consistency.ts",
     "test:character-debut": "node --import tsx _qa/character-debut.ts",
     "test:shared-world": "node --import tsx _qa/shared-world-engine.ts",
+    "test:shared-story-authority": "node --import tsx _qa/shared-story-authority.ts",
     "test:receipts": "node --import tsx _qa/receipt-reconciliation.ts",
     "test:save-envelope": "node --import tsx _qa/save-envelope.ts",
     "test:gateway-recovery": "node --import tsx _qa/gateway-recovery.ts",
