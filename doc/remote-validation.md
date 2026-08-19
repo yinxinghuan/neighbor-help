@@ -28,6 +28,8 @@
 16. 真机点击共享公告的“完成”后，后端原子推进到 version `3` / cursor `2`，请求为 `completed`，雨伞为 `returned`，事件流依次为 `request_claimed`、`request_completed`；私有回执状态为 `saved`，公共物品持有数归零。权威事务与 add/remove 回执快乐路径完整通过。
 17. 新源码部署后另建隔离临时 UUID，不重置原世界；两个独立浏览器同时领取时恰好一胜一冲突，胜者继续送达并完成。最终 snapshot 为 version `3` / cursor `2`，事件恰好为一次 `request_claimed` 和一次 `request_completed`，雨伞为 `returned`；完成正文没有进入通用失败，完成动作没有再次出现，完成卡片与归还状态一致。外部浏览器没有平台存档 bridge，因此此项不宣称个人云回执 ack 通过。
 
+18. 2026-08-20 使用真实 Telegram Mini App 开发入口重新进入已完成世界并继续旧存档。新版在载入后补写确定性的完成态纠正文案；历史正文仍保留，但“把雨伞送到公交站并完成委托”不再是可点击动作。共享公告显示请求已完成、雨伞已归还、回执已同步；旅途手册使用“个人物品”分区，共享雨伞没有进入该分区。只读核对前后 Worker 均为 version `3` / cursor `2`，事件仍只有一次 `request_claimed` 与一次 `request_completed`，证明重进校正没有产生公共写入。
+
 ## 测试中发现并修复
 
 - 浏览器测试最初在异步结果出现前读取页面，产生假阴性；改为等待成功/冲突终态并额外断言一个 HTTP 409。
@@ -45,12 +47,12 @@
 
 上述源码修复已通过 `_qa/shared-story-authority.ts` 的中英文阶段测试、全部 11 项本地非浏览器门禁、生产构建和双客户端 Playwright 流程。浏览器流程覆盖领取不越级、另一玩家陈旧冲突、完成后不进入通用失败、完成按钮消失、完成者状态正确、雨伞归还和个人持有数归零。
 
-提交 `7e61155` 已更新到同一 UUID 测试站。线上 bundle 含阶段化领取与陈旧动作清除标记，health 仍报告 Durable Object + SQLite 与 `unverified-production-beta`。在不重置现有完成世界的只读浏览器复验中，新客户端进入后自动清除了旧领取/完成动作，公告显示完成、公共雨伞显示归还，且网络断言确认没有调用 `/api/world/action`、回执 ack 或实验重置。随后使用独立临时 UUID 完成一次新的远端双客户端 `claim → conflict → complete` 事务并通过；原 Telegram UUID 没有被重置。
+提交 `7e61155` 已更新到同一 UUID 测试站。线上 bundle 含阶段化领取与陈旧动作清除标记，health 仍报告 Durable Object + SQLite 与 `unverified-production-beta`。在不重置现有完成世界的只读浏览器复验中，新客户端进入后自动清除了旧领取/完成动作，公告显示完成、公共雨伞显示归还，且网络断言确认没有调用 `/api/world/action`、回执 ack 或实验重置。随后使用独立临时 UUID 完成一次新的远端双客户端 `claim → conflict → complete` 事务并通过；原 Telegram UUID 没有被重置。2026-08-20 又在真实 Telegram 容器完成同一旧存档的重新进入核对，界面校正与后端无新增事件同时成立。
 
 ## 尚需真人或平台支持
 
 - 两个真实 AlterU 登录账号之间的后端可验证身份。当前客户端 ID 仍由 beta 边界提供，无法证明防冒用。
 - 第二个真实登录账号或物理设备与第一个账号并发争抢；现有两个隔离 Chromium context 仍不是两个经过平台认证的真人客户端。
 - 真实个人云存档写入失败、读回延迟和 ack 失败注入；本轮只通过正常关闭重进，不覆盖失败路径。
-- 原 Telegram 入口的新 `request_claimed → request_completed` 真机复验；隔离部署的真实 Worker/SQLite 双客户端事务已通过，但尚未证明真实容器语言链路和平台个人云回执。
+- 原 Telegram 入口的新 `request_claimed → request_completed` 真机事务复验；真实容器的已完成旧存档重进、中文完成态校正和正常回执读回已经通过，但尚未用新版在原世界产生一笔全新领取到完成事务。
 - 新玩家能否复述目标、循环和失败恢复；自动化不能替代理解度访谈。
