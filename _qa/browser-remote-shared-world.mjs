@@ -72,6 +72,32 @@ if (state.snapshot.events.filter((entry) => entry.type === 'request_claimed' && 
   throw new Error('authority did not commit exactly one umbrella claim')
 }
 
+await winner.page.getByRole('button', { name: /Take the umbrella to the corner bus stop and give it to the waiting resident/ }).click()
+await winner.page.getByText(/shared board then confirms that the request is complete/).waitFor({ timeout: 20_000 })
+const completedText = await winner.page.locator('body').innerText()
+if (/did not take effect|was not applied/i.test(completedText)) throw new Error('committed completion fell into generic failure recovery')
+if (await winner.page.getByRole('button', { name: /Give the umbrella to the waiting resident and complete the request/ }).count()) throw new Error('completed request remained a live completion choice')
+await winner.page.getByRole('button', { name: 'Shared board', exact: true }).click()
+await winner.page.getByText(/Completed/).first().waitFor()
+await winner.page.getByText('Returned', { exact: true }).waitFor()
+await winner.page.screenshot({ path: new URL('neighbor-help-remote-completed-platform-layout-390x844.png', out).pathname, fullPage: true })
+
+const finalState = await fetch(`${base}/api/world/state?world_key=main&after_cursor=0`).then((response) => response.json())
+const finalRequest = finalState.snapshot.requests.find((entry) => entry.id === 'req-umbrella-bus-stop')
+const finalUmbrella = finalState.snapshot.items.find((entry) => entry.id === 'item-umbrella-last')
+if (finalRequest?.status !== 'completed' || finalUmbrella?.custody !== 'returned') throw new Error('authority and completed UI did not converge')
+if (finalState.snapshot.events.filter((entry) => entry.type === 'request_completed' && entry.requestId === 'req-umbrella-bus-stop').length !== 1) {
+  throw new Error('authority did not commit exactly one umbrella completion')
+}
+
+await winner.page.reload({ waitUntil: 'networkidle' })
+await winner.page.addStyleTag({ content: '#alteru-guest-banner{display:none!important}' })
+const resume = winner.page.getByRole('button', { name: /Continue from the latest scene/ })
+if (await resume.count()) await resume.click()
+await winner.page.getByText(/shared board then confirms that the request is complete/).waitFor()
+if (await winner.page.getByRole('button', { name: /Claim the delivery request and pick up the last shared umbrella/ }).count()) throw new Error('reload restored a stale claim choice')
+if (await winner.page.getByRole('button', { name: /Give the umbrella to the waiting resident and complete the request/ }).count()) throw new Error('reload restored a stale completion choice')
+
 if (errors.length) throw new Error(errors.join('\n'))
 await winner.context.close()
 await loser.context.close()
