@@ -26,6 +26,7 @@
 14. 一个真实 Telegram Mini App 会话进入共享大厅并领取最后一把雨伞；界面进入前往公交站的后续叙事，Worker snapshot 同步变为 version `2` / cursor `1`，雨伞 custody 为 `player`，且事件流只有一条 `request_claimed`。这证明该入口的一次真实用户操作确实落到 Durable Object + SQLite，而不是仅在前端假推进。
 15. 同一真实 Telegram 账号关闭并重进后，恢复提示正确出现；继续游戏能回到公交站/雨伞回合，共享公告仍为 version `2`，个人共享物品镜像显示 `1` 件、回执状态为 `idle`。快乐路径上的故事存档、公共 cursor 与私有回执镜像联合恢复通过；这不等于失败注入通过。
 16. 真机点击共享公告的“完成”后，后端原子推进到 version `3` / cursor `2`，请求为 `completed`，雨伞为 `returned`，事件流依次为 `request_claimed`、`request_completed`；私有回执状态为 `saved`，公共物品持有数归零。权威事务与 add/remove 回执快乐路径完整通过。
+17. 新源码部署后另建隔离临时 UUID，不重置原世界；两个独立浏览器同时领取时恰好一胜一冲突，胜者继续送达并完成。最终 snapshot 为 version `3` / cursor `2`，事件恰好为一次 `request_claimed` 和一次 `request_completed`，雨伞为 `returned`；完成正文没有进入通用失败，完成动作没有再次出现，完成卡片与归还状态一致。外部浏览器没有平台存档 bridge，因此此项不宣称个人云回执 ack 通过。
 
 ## 测试中发现并修复
 
@@ -44,12 +45,12 @@
 
 上述源码修复已通过 `_qa/shared-story-authority.ts` 的中英文阶段测试、全部 11 项本地非浏览器门禁、生产构建和双客户端 Playwright 流程。浏览器流程覆盖领取不越级、另一玩家陈旧冲突、完成后不进入通用失败、完成按钮消失、完成者状态正确、雨伞归还和个人持有数归零。
 
-提交 `7e61155` 已更新到同一 UUID 测试站。线上 bundle 含阶段化领取与陈旧动作清除标记，health 仍报告 Durable Object + SQLite 与 `unverified-production-beta`。在不重置现有完成世界的只读浏览器复验中，新客户端进入后自动清除了旧领取/完成动作，公告显示完成、公共雨伞显示归还，且网络断言确认没有调用 `/api/world/action`、回执 ack 或实验重置。由于现有世界已经完成，尚未在新部署上重新提交一条真实 `request_claimed → request_completed` 事务；这仍需要干净测试世界或明确重置授权。
+提交 `7e61155` 已更新到同一 UUID 测试站。线上 bundle 含阶段化领取与陈旧动作清除标记，health 仍报告 Durable Object + SQLite 与 `unverified-production-beta`。在不重置现有完成世界的只读浏览器复验中，新客户端进入后自动清除了旧领取/完成动作，公告显示完成、公共雨伞显示归还，且网络断言确认没有调用 `/api/world/action`、回执 ack 或实验重置。随后使用独立临时 UUID 完成一次新的远端双客户端 `claim → conflict → complete` 事务并通过；原 Telegram UUID 没有被重置。
 
 ## 尚需真人或平台支持
 
 - 两个真实 AlterU 登录账号之间的后端可验证身份。当前客户端 ID 仍由 beta 边界提供，无法证明防冒用。
 - 第二个真实登录账号或物理设备与第一个账号并发争抢；现有两个隔离 Chromium context 仍不是两个经过平台认证的真人客户端。
 - 真实个人云存档写入失败、读回延迟和 ack 失败注入；本轮只通过正常关闭重进，不覆盖失败路径。
-- 新部署上的 `request_claimed` 与 `request_completed` 真机复验；线上只读完成态迁移已经通过，但真实 Telegram 新事务尚未重复验证。
+- 原 Telegram 入口的新 `request_claimed → request_completed` 真机复验；隔离部署的真实 Worker/SQLite 双客户端事务已通过，但尚未证明真实容器语言链路和平台个人云回执。
 - 新玩家能否复述目标、循环和失败恢复；自动化不能替代理解度访谈。
