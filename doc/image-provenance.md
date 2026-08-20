@@ -6,6 +6,17 @@
 
 ## 已采用素材
 
+### 正式平台海报
+
+- 制作接口：Aigram transit `POST https://chat.aiwaves.tech/aigram/api/gen-image`
+- 请求来源：`Origin: https://aigram.app`
+- 最终源 URL：`https://cdn.aiwaves.tech/prodsv/telegram/avatar/0/1787201416045424.png`
+- 原始栅格：`_production/poster-source.png`（1024×1024）
+- 正式文件：`public/poster.png`（1024×1024）
+- 后处理：只在顶部安全区叠加准确英文标题 `NEIGHBORLY HELP`；没有用 SVG、Canvas、界面截图或程序化图形替代主体插画。
+- 人工验收：地域中性公寓走廊；邻里传递药袋和餐食；无雨伞、伪文字、Logo、签名、制服或国家标识；1024×1024 与 160×160 均可辨认。
+- 拒绝候选：`https://cdn.aiwaves.tech/prodsv/telegram/avatar/0/1787201342844863.png` 与 `https://cdn.aiwaves.tech/prodsv/telegram/avatar/0/1787201382914968.png` 均因出现两把雨伞而拒绝，后者还出现纸箱伪文字。
+
 ### 封面与共享大厅
 
 - Media task：`mt_c9d4efd7bff0864df55f756f6909c097`

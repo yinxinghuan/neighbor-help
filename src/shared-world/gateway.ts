@@ -109,7 +109,8 @@ export class RemoteSharedWorldGateway implements SharedWorldGateway {
   }
 
   async commit(action: WorldAction): Promise<CommitResult> {
-    const response = await this.api<{ duplicate: boolean; code: string; committed_events?: WorldEvent[]; grant_receipts?: ItemReceipt[]; snapshot: unknown }>('/api/world/action', {
+    type ActionResponse = { duplicate: boolean; code: string; committed_events?: WorldEvent[]; grant_receipts?: ItemReceipt[]; snapshot: unknown }
+    const request: RequestInit = {
       method: 'POST',
       body: JSON.stringify({
         world_key: this.worldKey,
@@ -122,7 +123,36 @@ export class RemoteSharedWorldGateway implements SharedWorldGateway {
         type: action.type,
         payload: action.payload,
       }),
-    })
+    }
+    const submit = () => this.api<ActionResponse>('/api/world/action', request)
+    let response: ActionResponse
+    try {
+      response = await submit()
+    } catch (firstError) {
+      // An API error is an authoritative rejection. A transport error is an
+      // unknown outcome: retry the exact same action id so the worker can
+      // return its cached result without executing the action twice.
+      if (typeof firstError === 'object' && firstError && 'code' in firstError) throw firstError
+      try {
+        response = await submit()
+      } catch (retryError) {
+        if (typeof retryError === 'object' && retryError && 'code' in retryError) throw retryError
+        // If both responses were lost, reconcile against the authoritative
+        // event log before reporting failure. Receipts remain recoverable via
+        // listPendingReceipts and must not be acknowledged here.
+        const latest = await this.load(0).catch(() => null)
+        const committedEvents = latest?.events.filter((event) => event.actionId === action.actionId) ?? []
+        if (!latest || committedEvents.length === 0) throw firstError
+        return {
+          accepted: true,
+          duplicate: true,
+          code: 'DUPLICATE_ACTION',
+          archive: latest.archive,
+          committedEvents,
+          receipts: [],
+        }
+      }
+    }
     const archive = rebuildArchive(response.snapshot)
     return {
       accepted: true,

@@ -45,3 +45,9 @@
 - 换视觉素材：静态与运行时都走 AlterU Media Service；保留 `doc/image-provenance.md` 的任务、请求和人工验收记录，不把文字烘焙进图。
 - 加正式身份能力：在 Worker 写入、回执查询与 ack 前接入后端可验证身份，并删除仅用于实验的公开 beta 放行；在此之前保持 beta 标签。
 - 部署：本项目不携带同事环境的发布流程或凭据。当前工作区已用独立发布 Skill 建立未上架 UUID 测试站；交接包仍只含源码合同。接收方应按自己的平台流程绑定 Durable Object/SQLite，并重复双玩家并发、重连、回执和媒体端到端验收。
+
+## 未知提交结果恢复（2026-08-20）
+
+- `RemoteSharedWorldGateway.commit()` 将一次用户意图生成的 `action_id` 固定在整个请求生命周期。网络断开或响应丢失时只用同一个 ID 重试，Worker 通过 processed-action 缓存返回原结果，禁止重新生成 ID 导致重复领取、转交或完成。
+- 若连续两次响应都丢失，客户端先读取权威事件流并按 `actionId` 对账；发现事件即按已提交恢复 UI，回执仍由 `listPendingReceipts → 个人云存档读回确认 → ack` 独立恢复。HTTP/规则错误属于权威拒绝，不做模糊重试。
+- `npm run test:gateway-recovery` 同时覆盖本地游标重连、重复提交、回执 ack，以及远端“服务端已提交但首个响应丢失”时 action id 稳定且只执行一次。
