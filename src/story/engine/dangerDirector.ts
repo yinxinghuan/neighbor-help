@@ -1,5 +1,6 @@
 import { t } from '../i18n'
 import type { DangerDirective, DangerOutcome, ParsedScene, StoryBlock, StoryCartridge, StoryDangerState, StorySave } from '../types'
+import { encodeChoiceRecord } from './choiceInput'
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -59,9 +60,54 @@ function scheduledTurn(cartridge: StoryCartridge, cycle: number): number {
   return minimum + stableHash(`${cartridge.id}:danger-cycle:${cycle}`) % (maximum - minimum + 1)
 }
 
-function selectThreat(cartridge: StoryCartridge, cycle: number): string {
-  const threats = cartridge.dangerDirector?.threatPalette ?? []
-  return threats[stableHash(`${cartridge.id}:threat:${cycle}`) % Math.max(1, threats.length)] ?? 'an immediate world-appropriate threat'
+function selectThreat(save: Pick<StorySave, 'location' | 'map'>, cartridge: StoryCartridge, cycle: number): string {
+  const config = cartridge.dangerDirector
+  const threats = config?.threatPalette ?? []
+  const currentNode = save.map.find((node) => node.current)
+  const placeKey = currentNode?.id ?? save.location
+  const compatible = threats.filter((threat) => {
+    const allowed = config?.threatLocations?.[threat]
+    return !allowed?.length || (currentNode ? allowed.includes(currentNode.id) : false)
+  })
+  const candidates = compatible.length ? compatible : threats.filter((threat) => !config?.threatLocations?.[threat]?.length)
+  return candidates[stableHash(`${cartridge.id}:threat:${placeKey}:${cycle}`) % Math.max(1, candidates.length)] ?? 'an immediate world-appropriate threat'
+}
+
+function cleanDangerText(value: string): string {
+  return value.toLocaleLowerCase().replace(/[\s，。！？、,.!?;；：：“”'‘’()（）\-—_/]+/g, '')
+}
+
+/** A danger can become authoritative only when the player-visible prose and
+ * the exact encounter command establish the same phase and threat. */
+export function dangerTextGrounded(threat: string, text: string, locale: StoryCartridge['locale']): boolean {
+  const source = cleanDangerText(text)
+  const target = cleanDangerText(threat)
+  if (!source || !target) return false
+  if (source.includes(target)) return true
+  if (locale === 'en') {
+    const stop = new Set(['about', 'after', 'again', 'before', 'being', 'could', 'their', 'there', 'these', 'those', 'would'])
+    const terms = [...new Set(threat.toLocaleLowerCase().match(/[a-z]{4,}/g) ?? [])].filter((term) => !stop.has(term))
+    const matches = terms.filter((term) => source.includes(cleanDangerText(term))).length
+    return matches >= Math.min(2, terms.length)
+  }
+  const pairs = [...new Set(Array.from({ length: Math.max(0, target.length - 1) }, (_, index) => target.slice(index, index + 2)))]
+    .filter((term) => !['突然', '现在', '已经', '事情', '情况', '现场'].includes(term))
+  return pairs.filter((term) => source.includes(term)).length >= Math.min(2, pairs.length)
+}
+
+export function dangerDirectiveEstablished(
+  parsed: ParsedScene,
+  directive: DangerDirective,
+  locale: StoryCartridge['locale'],
+): boolean {
+  const encounter = [...parsed.commands].reverse().find((command) => command.type === 'encounter')
+  if (encounter?.type !== 'encounter' || encounter.phase !== directive.phase || !encounter.kind) return false
+  if (cleanDangerText(encounter.kind) !== cleanDangerText(directive.threat)) return false
+  if (encounter.severity != null && encounter.severity !== directive.severity) return false
+  if (directive.check && encounter.outcome !== directive.check.outcome) return false
+  const prose = parsed.blocks.filter((block) => block.kind === 'narration' || block.kind === 'dialogue')
+    .map((block) => `${block.speaker ?? ''} ${block.text}`).join('\n')
+  return dangerTextGrounded(directive.threat, prose, locale)
 }
 
 function dangerCheck(save: StorySave, cartridge: StoryCartridge, actionId: string, severity: number) {
@@ -88,9 +134,10 @@ export function buildDangerDirective(save: StorySave, cartridge: StoryCartridge,
   if (!config) return undefined
   const state = normalizeDangerState(save.danger)
   const risk = riskSeverity(save, cartridge)
+  if (state.phase === 'calm' && risk < 5 && save.scene < Math.max(0, Math.floor(config.graceScenes ?? 6))) return undefined
   const baseSeverity = Math.max(risk, 2 + stableHash(`${cartridge.id}:severity:${state.cycle}`) % 2)
   const severity = clamp(state.severity > 1 ? Math.max(state.severity, risk) : baseSeverity, 1, 5)
-  const threat = state.currentThreat ?? selectThreat(cartridge, state.cycle)
+  const threat = state.currentThreat ?? selectThreat(save, cartridge, state.cycle)
   const shared = { severity, threat, methods: config.methods, physicalCombat: config.physicalCombat } as const
 
   if (state.phase === 'warning') return { phase: 'confrontation', ...shared }
@@ -111,12 +158,109 @@ export function dangerDirectiveContract(directive: DangerDirective | undefined):
       : 'Physical combat is one valid method, never the only method.'
   const tag = `[encounter: phase="${directive.phase}" kind="${directive.threat}" severity="${directive.severity}"${directive.check ? ` outcome="${directive.check.outcome}"` : ' outcome="active"'}]`
   if (directive.phase === 'warning') return `
-DANGER DIRECTIVE IS AUTHORITATIVE. This turn MUST introduce a readable early warning of this current-world threat: ${directive.threat}. Severity ${directive.severity}/5. Do not resolve or skip it yet. Let the player notice, prepare for, investigate, or avoid it. The three choices must be concrete versions of: ${methods}. ${combat} Emit this exact encounter tag: ${tag}`
+DANGER DIRECTIVE IS AUTHORITATIVE. This turn MUST introduce a readable early warning of this current-world threat: ${directive.threat}. Severity ${directive.severity}/5. Do not resolve or skip it yet. Let the player notice, prepare for, investigate, or avoid it. Offer one to five concrete, materially distinct choices drawn only from methods that are executable now: ${methods}. Every choice must name the concrete threat or repeat an identifying phrase from it. Do not pad or truncate to three. ${combat} Emit this exact encounter tag: ${tag}`
   if (directive.phase === 'confrontation') return `
-DANGER DIRECTIVE IS AUTHORITATIVE. Escalate the established threat into an immediate obstacle or confrontation now: ${directive.threat}. Severity ${directive.severity}/5. Do not resolve it before the player chooses a response. The three choices must be concrete and materially different versions of: ${methods}. ${combat} Emit this exact encounter tag: ${tag}`
+DANGER DIRECTIVE IS AUTHORITATIVE. Escalate the established threat into an immediate obstacle or confrontation now: ${directive.threat}. Severity ${directive.severity}/5. Do not resolve it before the player chooses a response. Offer one to five concrete, materially distinct choices drawn only from methods that are executable now: ${methods}. Every choice must name the concrete threat or repeat an identifying phrase from it. Do not pad or truncate to three. ${combat} Emit this exact encounter tag: ${tag}`
   const check = directive.check!
   return `
 DANGER DIRECTIVE IS AUTHORITATIVE. Resolve the player's chosen response to the established threat now: ${directive.threat}. The local engine has already fixed the check and refresh cannot reroll it: skill="${check.skill}", dc=${check.dc}, roll=${check.roll}, modifier=${check.modifier}, total=${check.total}, outcome=${check.outcome}. Narrate exactly that outcome and its immediate aftermath; never replace the roll, soften a failure into success, or invent a second check. Emit [skill_check: skill="${check.skill}" dc="${check.dc}" rolls="${check.roll}" modifier="${check.modifier}" total="${check.total}" result="${check.outcome}"] and this exact encounter tag: ${tag}. End at the next decision after the consequence. ${combat}`
+}
+
+/** Emergency choices must carry the exact unresolved threat. Generic recovery
+ * labels are what previously allowed a red-light scene to loop forever. */
+export function contextualDangerChoiceLabels(
+  threat: string | undefined,
+  methods: string[],
+  locale: StoryCartridge['locale'],
+): string[] {
+  const subject = (threat ?? '').replace(/[“”"'‘’。.!！?？；;：:]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!subject) return [...new Set(methods.map((method) => method.trim()).filter(Boolean))]
+  const concise = subject.length > (locale === 'zh' ? 26 : 56)
+    ? `${subject.slice(0, locale === 'zh' ? 25 : 55).trim()}…`
+    : subject
+  const labels = locale === 'zh'
+    ? [`确认${concise}的具体情况`, `立即应对${concise}`, `撤离${concise}影响的现场`]
+    : [`Confirm the facts about ${concise}`, `Respond directly to ${concise}`, `Withdraw from the scene of ${concise}`]
+  return [...new Set(labels)].filter((label) => label.length <= 96)
+}
+
+export function dangerDirectiveChoices(directive: DangerDirective, scene: number, locale: StoryCartridge['locale']): StorySave['choices'] {
+  return contextualDangerChoiceLabels(directive.threat, directive.methods, locale).slice(0, 5)
+    .map((label, index) => ({ id: `danger-${scene}-${index}`, label }))
+}
+
+/** A model failure cannot soft-lock an authoritative danger phase. After one
+ * repair attempt, this local scene advances the exact directive and leaves
+ * concrete, grounded choices. */
+export function createDangerFallbackScene(
+  save: Pick<StorySave, 'scene' | 'location' | 'objective'>,
+  cartridge: StoryCartridge,
+  directive: DangerDirective,
+): ParsedScene {
+  const zh = cartridge.locale === 'zh'
+  const threat = directive.threat
+  const outcome = directive.check?.outcome ?? 'none'
+  const resolvedWell = outcome === 'critical-success' || outcome === 'success'
+  const costly = outcome === 'costly-success'
+  const text = directive.phase === 'warning'
+    ? zh
+      ? `你清楚注意到新的阻碍：${threat}。情况尚未失控，但已经需要处理。`
+      : `You clearly notice a new obstacle: ${threat}. It is not yet out of control, but it now needs attention.`
+    : directive.phase === 'confrontation'
+      ? zh
+        ? `${threat}已经直接挡住眼前的行动。你必须确认情况、立即应对或撤离现场。`
+        : `${threat} now directly blocks the action in front of you. You must confirm it, respond, or withdraw.`
+      : zh
+        ? resolvedWell
+          ? `你按刚才选择的方式处理了${threat}，眼前的阻碍已经解除。`
+          : costly
+            ? `你处理了${threat}，眼前的阻碍已经解除，但你为此付出了代价。`
+            : `你尝试处理${threat}，这次没有成功；直接危险已经结束，但后果仍需要继续处理。`
+        : resolvedWell
+          ? `You address ${threat} using the action you chose, and the immediate obstacle is resolved.`
+          : costly
+            ? `You address ${threat}; the immediate obstacle is resolved, but the effort carries a cost.`
+            : `Your attempt to address ${threat} does not succeed. The immediate danger has ended, but its consequence remains.`
+  const choices = directive.phase === 'resolution'
+    ? zh
+      ? [`确认${threat}处理后的现场`, `在${save.location}继续${save.objective || '当前委托'}`]
+      : [`Inspect the scene after ${threat}`, `Continue ${save.objective || 'the current request'} at ${save.location}`]
+    : contextualDangerChoiceLabels(threat, directive.methods, cartridge.locale)
+  return {
+    raw: text,
+    blocks: [{ id: `danger-fallback-${save.scene + 1}`, kind: 'narration', text }],
+    commands: [
+      { type: 'scene_location', location: save.location },
+      { type: 'encounter', phase: directive.phase, kind: threat, severity: directive.severity, outcome },
+      { type: 'choices', choices },
+    ],
+  }
+}
+
+/** Repair the live tray and its immutable current-scene record for users who
+ * saved while an old generic recovery loop was active. Historical scenes stay
+ * unchanged and a second migration pass is a no-op. */
+export function repairLegacyDangerLoopChoices<T extends {
+  scene: number
+  danger: StoryDangerState
+  choices: StorySave['choices']
+  blocks: StorySave['blocks']
+  facts?: StorySave['facts']
+}>(candidate: T, cartridge: StoryCartridge): T {
+  if (candidate.danger.phase === 'calm' || !candidate.danger.currentThreat || !cartridge.dangerDirector) return candidate
+  const replacement = contextualDangerChoiceLabels(candidate.danger.currentThreat, cartridge.dangerDirector.methods, cartridge.locale)
+    .map((label, index) => ({ id: `danger-recovery-${candidate.scene}-${index}`, label }))
+  const current = candidate.choices.map((choice) => choice.label)
+  if (current.length === replacement.length && current.every((label, index) => label === replacement[index]?.label)) return candidate
+  const recordId = `choices-${candidate.scene}`
+  return {
+    ...candidate,
+    choices: replacement,
+    blocks: candidate.blocks.map((block) => block.id === recordId && block.kind === 'choices'
+      ? { ...block, text: encodeChoiceRecord(replacement) }
+      : block),
+    ...(candidate.facts ? { facts: { ...candidate.facts, 'danger-loop-repaired-v1': true } } : {}),
+  }
 }
 
 function hasMeaningfulCost(before: StorySave, after: StorySave, cartridge: StoryCartridge): boolean {
@@ -174,6 +318,13 @@ export function settleDangerTurn(
   const encounter = [...parsed.commands].reverse().find((command) => command.type === 'encounter')
   const effects: StoryBlock[] = []
 
+  // Defense in depth: a hidden, mismatched, or stale directive cannot mutate
+  // authoritative danger state even if an upstream validator regresses.
+  if (directive && !dangerDirectiveEstablished(parsed, directive, cartridge.locale)) {
+    after.danger = state
+    return effects
+  }
+
   if (directive?.phase === 'warning') {
     after.danger = { ...state, phase: 'warning', safeTurns: 0, severity: directive.severity, currentThreat: directive.threat }
     effects.push({ id: `danger-${after.scene}`, kind: 'event', text: t(cartridge.locale, 'dangerWarning'), data: { dangerPhase: 'warning', severity: directive.severity } })
@@ -203,7 +354,7 @@ export function settleDangerTurn(
   if (encounter?.type === 'encounter') {
     const severity = clamp(Math.floor(encounter.severity ?? 2), 1, 5)
     if (encounter.phase === 'warning' || encounter.phase === 'confrontation') {
-      after.danger = { ...state, phase: encounter.phase, safeTurns: 0, severity, currentThreat: encounter.kind ?? state.currentThreat ?? selectThreat(cartridge, state.cycle) }
+      after.danger = { ...state, phase: encounter.phase, safeTurns: 0, severity, currentThreat: encounter.kind ?? state.currentThreat ?? selectThreat(after, cartridge, state.cycle) }
       return effects
     }
     after.danger = {

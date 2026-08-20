@@ -4,11 +4,13 @@
 
 前端使用 React 18、TypeScript、Less 与 Vite 5，构建基址固定为 `./`。叙事层使用状态式 RPG reducer、结构化协议解析、电影式开场节拍与 AlterU 平台存档桥接；共享世界层使用独立 TypeScript reducer 与 gateway。正式权威后端设计为 Cloudflare Durable Object + SQLite，并通过同一游戏 UUID 下的 `/api/*` 提供服务。静态插画和运行时剧情图片统一使用 AlterU Media Service；运行时不调用 Imagine，也不调用旧 `gen-image` 接口。
 
-当前项目 UUID 为 `00c8cbf4-9fba-44b6-b895-03361f71ba34`。本地 `?local=1` 使用浏览器内共享模拟；默认生产合同由 `getGameApiBase()` 返回 `/<GAME_ID>`。UUID 自托管测试站已部署并通过两个隔离浏览器会话、真实 Durable Object、回执、游标和 AlterU Media Service 附件验证。它尚未注册到游戏目录或发布 GitHub Pages 镜像；平台后端仍未提供可验证身份，因此身份模式保留为 `unverified-production-beta`。
+当前项目 UUID 为 `00c8cbf4-9fba-44b6-b895-03361f71ba34`。本地 `?local=1` 使用浏览器内共享模拟；默认生产合同由 `getGameApiBase()` 返回 `/<GAME_ID>`。正式自托管主站、GitHub Pages 前端镜像和公开游戏目录均已发布；正式多人世界只运行在 UUID 自托管主站。平台后端仍未提供可验证身份，因此身份模式保留为 `unverified-production-beta`。
 
 ## 2. 目录结构
 
 - `src/story/`：RPG 界面、角色卡带、叙事 reducer、选择连续性、危险导演、图片导演、语音和平台适配器。
+- `src/story/engine/dangerDirector.ts`：地点相容的危险排期、威胁落地验证、固定判定、威胁专属恢复选项和旧循环存档迁移。
+- `src/story/engine/turnConsistency.ts`：地点、图片、目标、活跃威胁和选项的提交前一致性门禁。
 - `src/shared-world/engine.ts`：共享委托、唯一物品、交接、完成、事件和媒体附件的纯权威规则。
 - `src/shared-world/storyBridge.ts`：把提交后的共享实体快照映射为阶段化确定性正文、目标、地点和下一步，并清除已失效的共享行动。
 - `src/shared-world/gateway.ts`：本地模拟与远程 `/api/*` 的统一客户端接口。
@@ -18,7 +20,7 @@
 - `src/shared/runtime/media.ts`、`useGenImage.ts`：AlterU Media Service 的请求、轮询、稳定 `request_id` 与终态错误处理。
 - `worker/index.js`：Durable Object、SQLite 表、事务提交、回执、游标、媒体附件和实验身份门禁。
 - `worker/bindings.json`：Worker 绑定说明，不含部署凭据。
-- `_qa/`：纯规则、共享故事权威桥接、回执、存档 envelope、断线游标、Worker VM 与双玩家浏览器测试。
+- `_qa/`：纯规则、红灯循环恢复、危险落地与活跃线程、共享故事权威桥接、回执、存档 envelope、断线游标、Worker VM 与双玩家浏览器测试。
 - `doc/`：需求、视觉、界面、反馈、共享合同、媒体来源与 QA 证据。
 
 ## 3. 核心模块
@@ -35,16 +37,19 @@
 
 界面以 390×844 为主并覆盖 320×568。公告列表使用 `onClick` 保留滚动，功能图标为统一线性 SVG，关系入口保持无文字笔记本图标。中英文共享同一地域中性视觉资产；生成图不承担公告文字或地点标签。
 
+危险指令在写入 reducer 前经过双层保护。`validateTurnConsistency()` 要求可见正文、`encounter` 阶段/威胁和系统选项指向同一事实；`settleDangerTurn()` 再次验证后才允许推进 `warning → confrontation → resolution`。活跃威胁不能被无关正文或选项清空。生成结果连续校验失败时，`applyConsistencyRecovery()` 隔离失败动作，只显示两个本地恢复出口；`applyConsistencyRecoverySelection()` 不调用模型，直接返回当前威胁的确认、应对和撤离选项。危险指令经过一次模型修复仍不合格时，`createDangerFallbackScene()` 生成同一阶段、同一威胁和本地固定判定的最小可玩结果，保证模型故障不能软锁状态机。`repairLegacyDangerLoopChoices()` 在读档时同步修复当前菜单和当前场景的不可变选择记录。
+
 ## 4. 扩展点
 
 - 改叙事、人物、开场与选项：编辑 `src/story/cartridges/neighborHelp.ts`，并同步 `doc/requirements.md`。
+- 改危险节奏、地点范围或响应方式：编辑 `neighborHelp.ts` 的 `dangerDirector`，同时扩充 `_qa/danger-grounding.ts`、`_qa/danger-loop-recovery.ts` 和 `_qa/danger-director.ts`；不得绕过正文/协议/选项三方一致性。
 - 改共享委托、物品和规则：同时修改 `src/shared-world/engine.ts` 与 `worker/index.js`，再扩充 `_qa/shared-world-engine.ts` 和 `_qa/worker-rules.mjs`，禁止只改客户端。
 - 改共享行动正文或下一步：修改 `src/shared-world/storyBridge.ts`，并扩充 `_qa/shared-story-authority.ts`；不得把提交成功后的结果重新交给模型决定。
 - 改回执或个人物品：修改 `playerInventory.ts`、`useReceiptInventory.ts`；新增私人域必须使用新的 envelope namespace，不能新增一个覆盖整行的云存档 hook。
 - 改共享接口：保持默认 `API_BASE = "/" + GAME_ID`，Worker 内继续接收平台剥离 UUID 后的 `/api/*`；`?api_base=` 仅供 QA。
 - 换视觉素材：静态与运行时都走 AlterU Media Service；保留 `doc/image-provenance.md` 的任务、请求和人工验收记录，不把文字烘焙进图。
 - 加正式身份能力：在 Worker 写入、回执查询与 ack 前接入后端可验证身份，并删除仅用于实验的公开 beta 放行；在此之前保持 beta 标签。
-- 部署：本项目不携带同事环境的发布流程或凭据。当前工作区已用独立发布 Skill 建立未上架 UUID 测试站；交接包仍只含源码合同。接收方应按自己的平台流程绑定 Durable Object/SQLite，并重复双玩家并发、重连、回执和媒体端到端验收。
+- 部署：本项目不携带同事环境的发布流程或凭据。当前工作区使用独立发布 Skill 维护 UUID 正式主站和 Pages 镜像；交接包仍只含源码合同。接收方应按自己的平台流程绑定 Durable Object/SQLite，并重复双玩家并发、重连、回执和媒体端到端验收。
 
 ## 未知提交结果恢复（2026-08-20）
 

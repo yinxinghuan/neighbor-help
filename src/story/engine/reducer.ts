@@ -1,7 +1,7 @@
 import { SCENE_IMAGE_PROMPT_VERSION, type CharacterDefinition, type DangerDirective, type DomainActionResolution, type ImageBlockStatus, type ParsedCommand, type ParsedScene, type SceneImageSubject, type StoryBlock, type StoryCartridge, type StoryCharacter, type StorySave } from '../types'
 import { t } from '../i18n'
 import { chooseSceneImage } from './imageDirector'
-import { createInitialDangerState, normalizeDangerState, settleDangerTurn } from './dangerDirector'
+import { contextualDangerChoiceLabels, createInitialDangerState, normalizeDangerState, settleDangerTurn } from './dangerDirector'
 import { authoredDecisionContext, choicesAreGrounded, createTransitionBlock } from './continuity'
 import { applyDomainResolution, domainAllowsModelCommand, syncDomainDerivedState } from './domainRules'
 import { encodeChoiceRecord } from './choiceInput'
@@ -251,11 +251,17 @@ function shortChoiceContext(value: string, maxLength: number): string {
   return clean.length > maxLength ? `${clean.slice(0, maxLength - 1).trim()}…` : clean
 }
 
-export function createRecoveryChoices(save: Pick<StorySave, 'scene' | 'location' | 'objective' | 'partyMemberIds'>, cartridge: StoryCartridge): StorySave['choices'] {
+export function createRecoveryChoices(
+  save: Pick<StorySave, 'scene' | 'location' | 'objective' | 'partyMemberIds'> & Partial<Pick<StorySave, 'danger'>>,
+  cartridge: StoryCartridge,
+): StorySave['choices'] {
   const location = shortChoiceContext(save.location, cartridge.locale === 'zh' ? 14 : 24)
   const objective = shortChoiceContext(save.objective, cartridge.locale === 'zh' ? 18 : 32)
   const hasParty = save.partyMemberIds.length > 0
-  const labels = cartridge.locale === 'zh'
+  const activeThreat = save.danger && save.danger.phase !== 'calm'
+  const labels = activeThreat && cartridge.dangerDirector
+    ? contextualDangerChoiceLabels(save.danger?.currentThreat, cartridge.dangerDirector.methods, cartridge.locale)
+    : cartridge.locale === 'zh'
     ? [
         `观察${location || '周围'}的新变化`,
         objective ? `追查“${objective}”的线索` : '检查与刚才行动有关的线索',
@@ -270,42 +276,114 @@ export function createRecoveryChoices(save: Pick<StorySave, 'scene' | 'location'
 }
 
 function createActionRecoveryChoices(
-  save: Pick<StorySave, 'scene' | 'location' | 'partyMemberIds'>,
+  save: Pick<StorySave, 'scene' | 'location'>,
   cartridge: StoryCartridge,
-  actionId: string,
 ): StorySave['choices'] {
-  const action = shortChoiceContext(actionId, cartridge.locale === 'zh' ? 44 : 84)
   const location = shortChoiceContext(save.location, cartridge.locale === 'zh' ? 14 : 24)
-  const hasParty = save.partyMemberIds.length > 0
   const labels = cartridge.locale === 'zh'
     ? [
-        action || '继续完成刚才的行动',
-        `先在${location || '原地'}确认与这一步有关的路线和线索`,
-        hasParty ? '和同行者商量怎样继续刚才的行动' : `暂缓这一步，留在${location || '原地'}观察局势`,
+        `查看${location || '原地'}现在能做的事`,
+        '放弃原计划，改走别的路',
       ]
     : [
-        action || 'Continue the action you just attempted',
-        `Confirm the route and clues for this action at ${location || 'the current place'}`,
-        hasParty ? 'Ask your companions how to continue the same action' : `Pause this action and observe from ${location || 'the current place'}`,
+        `See what is actually possible at ${location || 'the current place'}`,
+        'Set the original plan aside and take another route',
       ]
   return labels.map((label, index) => ({ id: `recovery-${save.scene}-${index}`, label }))
 }
 
-export function applyConsistencyRecovery(save: StorySave, cartridge: StoryCartridge, actionId: string): StorySave {
+function consistencyActions(save: Pick<StorySave, 'blocks'>): Map<number, string> {
+  const actions = new Map<number, string>()
+  save.blocks.forEach((block) => {
+    const match = block.kind === 'event' ? block.id.match(/^action-(\d+)$/) : undefined
+    if (match) actions.set(Number(match[1]), block.text.trim())
+  })
+  return actions
+}
+
+function rootConsistencyAction(save: Pick<StorySave, 'scene' | 'blocks' | 'lastActionId'>, actionId?: string): string {
+  const actions = consistencyActions(save)
+  let action = actionId?.trim() || actions.get(save.scene) || save.lastActionId?.trim() || ''
+  const synthetic = /^(?:查看.+现在能做的事|放弃原计划，改走别的路|See what is actually possible at .+|Set the original plan aside and take another route)$/i
+  if (!synthetic.test(action)) return action
+  for (let scene = save.scene; scene >= 0; scene -= 1) {
+    if (!save.blocks.some((block) => block.id === `consistency-recovery-${scene}`)) continue
+    const previous = actions.get(scene)
+    if (previous && !synthetic.test(previous)) return previous
+  }
+  return action
+}
+
+export function resolveConsistencyRecoverySelection(
+  save: Pick<StorySave, 'scene' | 'blocks' | 'choices' | 'lastActionId'>,
+  action: string,
+): { mode: 'confirm' | 'pause'; originalAction: string } | undefined {
+  if (!save.blocks.some((block) => block.id === `consistency-recovery-${save.scene}`)) return undefined
+  const index = save.choices.findIndex((choice) => choice.id.startsWith(`recovery-${save.scene}-`) && choice.label === action)
+  if (index !== 0 && index !== 1) return undefined
+  return { mode: index === 0 ? 'confirm' : 'pause', originalAction: rootConsistencyAction(save) }
+}
+
+export function applyConsistencyRecoverySelection(
+  save: StorySave,
+  cartridge: StoryCartridge,
+  selectedAction: string,
+  selection: { mode: 'confirm' | 'pause'; originalAction: string },
+): StorySave {
   const scene = save.scene + 1
-  const choices = createActionRecoveryChoices({ ...save, scene }, cartridge, actionId)
+  const choices = createRecoveryChoices({ ...save, scene }, cartridge)
+    .map((choice, index) => ({ ...choice, id: `recovery-exit-${scene}-${index}` }))
+    .filter((choice, index, all) => all.findIndex((entry) => entry.label === choice.label) === index)
+    .slice(0, 5)
   return {
     ...save,
     scene,
     locale: cartridge.locale,
-    lastActionId: actionId,
+    lastActionId: selectedAction,
     sessionEnded: false,
     decisionContext: '',
     choices,
     blocks: [
       ...save.blocks,
-      { id: `action-${scene}`, kind: 'event', text: actionId },
-      { id: `consistency-recovery-${scene}`, kind: 'narration', text: t(cartridge.locale, 'consistencyRecovery', { name: save.location, action: actionId }) },
+      { id: `action-${scene}`, kind: 'event', text: selectedAction },
+      {
+        id: `consistency-recovery-exit-${scene}`,
+        kind: 'narration',
+        text: cartridge.locale === 'zh'
+          ? selection.mode === 'confirm'
+            ? `你先停下来核对“${selection.originalAction || selectedAction}”真正需要的条件，眼前仍有效的行动已经重新列出。`
+            : `你没有继续重复“${selection.originalAction || selectedAction}”，而是保留现状，重新查看还能安全进行的行动。`
+          : selection.mode === 'confirm'
+            ? `You pause to verify what “${selection.originalAction || selectedAction}” actually requires. The actions that remain valid are listed again.`
+            : `You do not repeat “${selection.originalAction || selectedAction}”. The current state remains intact while valid actions are listed again.`,
+        data: { consistencyRecoveryExit: selection.mode },
+      },
+      createChoiceRecordBlock(scene, choices),
+    ],
+  }
+}
+
+export function applyConsistencyRecovery(save: StorySave, cartridge: StoryCartridge, actionId: string): StorySave {
+  const scene = save.scene + 1
+  const originalAction = rootConsistencyAction(save, actionId)
+  const choices = createActionRecoveryChoices({ ...save, scene }, cartridge)
+  return {
+    ...save,
+    scene,
+    locale: cartridge.locale,
+    lastActionId: originalAction,
+    sessionEnded: false,
+    decisionContext: '',
+    facts: {
+      ...save.facts,
+      consistency_quarantined_action: originalAction,
+      consistency_quarantined_location: save.location,
+    },
+    choices,
+    blocks: [
+      ...save.blocks,
+      { id: `action-${scene}`, kind: 'event', text: originalAction },
+      { id: `consistency-recovery-${scene}`, kind: 'narration', text: t(cartridge.locale, 'consistencyRecovery', { name: save.location, action: originalAction }) },
       createChoiceRecordBlock(scene, choices),
     ],
   }
@@ -338,9 +416,9 @@ export function repairLegacyConsistencyRecovery<T extends {
   if (candidate.lastActionId?.trim() && !actions.has(candidate.scene)) actions.set(candidate.scene, candidate.lastActionId.trim())
   if (!recoveryScenes.size) return candidate
 
-  const actionChoices = (scene: number, action: string) => createActionRecoveryChoices({
-    scene, location: recoveryLocations.get(scene) ?? candidate.location, partyMemberIds: candidate.partyMemberIds ?? [],
-  }, cartridge, action)
+  const actionChoices = (scene: number, _action: string) => createActionRecoveryChoices({
+    scene, location: recoveryLocations.get(scene) ?? candidate.location,
+  }, cartridge)
   const currentAction = actions.get(candidate.scene)
   const currentLocation = recoveryLocations.get(candidate.scene) ?? candidate.location
   const currentExpected = currentAction ? t(cartridge.locale, 'consistencyRecovery', { name: currentLocation, action: currentAction }) : ''

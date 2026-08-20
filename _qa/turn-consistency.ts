@@ -1,6 +1,6 @@
 import { listCartridges } from '../src/story/cartridges/index'
 import { parseStoryProtocol } from '../src/story/engine/protocol'
-import { applyConsistencyRecovery, createInitialSave, repairLegacyConsistencyRecovery } from '../src/story/engine/reducer'
+import { applyConsistencyRecovery, applyConsistencyRecoverySelection, createInitialSave, repairLegacyConsistencyRecovery, resolveConsistencyRecoverySelection } from '../src/story/engine/reducer'
 import { canonicalizeTurnMetadata, validateTurnConsistency } from '../src/story/engine/turnConsistency'
 import { decodeChoiceRecord } from '../src/story/engine/choiceInput'
 
@@ -60,11 +60,17 @@ const recovery = applyConsistencyRecovery(initial, cartridge, action)
 equal(recovery.scene, initial.scene + 1, 'consistency recovery records exactly one attempted turn')
 equal(recovery.location, initial.location, 'recovery cannot teleport the player')
 equal(recovery.objective, initial.objective, 'recovery cannot replace the objective with the attempted action')
-equal(recovery.choices[0]?.label, action, 'first recovery choice preserves the exact attempted action')
+ok(!recovery.choices.some((choice) => choice.label === action), 'failed action is quarantined from executable recovery choices')
+equal(recovery.facts.consistency_quarantined_action, action, 'the attempted action remains in authoritative audit facts')
 ok(recovery.blocks.some((block) => block.id === `consistency-recovery-${recovery.scene}` && block.text.includes(action)), 'recovery visibly explains why the action paused')
 const recoveryRecord = recovery.blocks.find((block) => block.id === `choices-${recovery.scene}`)
 equal(recoveryRecord?.kind, 'choices', 'recovery persists its visible choice record')
-equal(decodeChoiceRecord(recoveryRecord?.text ?? '')[0], action, 'saved recovery choice record preserves the action')
+equal(decodeChoiceRecord(recoveryRecord?.text ?? '')[0], recovery.choices[0]?.label, 'saved recovery choice record matches the safe exit')
+const recoverySelection = resolveConsistencyRecoverySelection(recovery, recovery.choices[0]!.label)
+ok(recoverySelection, 'recovery exit resolves without another model turn')
+const exitedRecovery = applyConsistencyRecoverySelection(recovery, cartridge, recovery.choices[0]!.label, recoverySelection!)
+equal(exitedRecovery.scene, recovery.scene + 1, 'local recovery exit advances exactly once')
+ok(!exitedRecovery.choices.some((choice) => choice.label === action), 'local recovery exit does not restore the quarantined action')
 
 const legacy = {
   ...recovery,
@@ -76,8 +82,8 @@ const legacy = {
 }
 const migrated = repairLegacyConsistencyRecovery(legacy, cartridge)
 equal(migrated.objective, action, 'legacy migration does not invent a different objective')
-equal(migrated.choices[0]?.label, action, 'legacy generic recovery choice is migrated to the attempted action')
-equal(decodeChoiceRecord(migrated.blocks.find((block) => block.id === `choices-${migrated.scene}`)?.text ?? '')[0], action, 'legacy saved choice record is migrated')
+ok(!migrated.choices.some((choice) => choice.label === action), 'legacy generic recovery does not restore the quarantined action')
+equal(decodeChoiceRecord(migrated.blocks.find((block) => block.id === `choices-${migrated.scene}`)?.text ?? '')[0], migrated.choices[0]?.label, 'legacy saved choice record matches the migrated safe exit')
 equal(repairLegacyConsistencyRecovery(migrated, cartridge), migrated, 'legacy migration is idempotent')
 
-console.log(JSON.stringify({ ok: true, checks: ['metadata-canonicalization', 'image-discard', 'objective-grounding', 'stale-place-choice-rejected', 'action-preserving-recovery', 'legacy-recovery-migration'] }))
+console.log(JSON.stringify({ ok: true, checks: ['metadata-canonicalization', 'image-discard', 'objective-grounding', 'stale-place-choice-rejected', 'quarantined-recovery', 'local-recovery-exit', 'legacy-recovery-migration'] }))

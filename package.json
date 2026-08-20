@@ -1,6 +1,6 @@
 {
   "name": "neighbor-help",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -12,6 +12,8 @@
     "preview": "vite preview",
     "test:protocol": "node --import tsx _qa/protocol.ts",
     "test:danger": "node --import tsx _qa/danger-director.ts",
+    "test:danger-grounding": "node --import tsx _qa/danger-grounding.ts",
+    "test:danger-loop": "node --import tsx _qa/danger-loop-recovery.ts",
     "test:payment": "node --import tsx _qa/payment-consistency.ts",
     "test:turn": "node --import tsx _qa/turn-consistency.ts",
     "test:character-debut": "node --import tsx _qa/character-debut.ts",

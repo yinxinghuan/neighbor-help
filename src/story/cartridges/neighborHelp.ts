@@ -40,6 +40,7 @@ function dangerDirector(locale: 'zh' | 'en'): StoryDangerDirector {
     minSafeTurns: 3,
     maxSafeTurns: 5,
     cooldownTurns: 2,
+    graceScenes: 6,
     escalationStats: ['energy', 'patience'],
     threatPalette: zh ? [
       '电梯停运时仍有一个较重的包裹需要送达',
@@ -54,6 +55,19 @@ function dangerDirector(locale: 'zh' | 'en'): StoryDangerDirector {
       'a pet in temporary care slips through a half-open door',
       'two open requests need the same spare key at once',
     ],
+    threatLocations: zh ? {
+      '电梯停运时仍有一个较重的包裹需要送达': ['lobby'],
+      '雨水开始漫进共享大厅，而雨伞尚未归还': ['lobby'],
+      '一项送药委托突然变得紧迫': ['lobby', 'bus-stop'],
+      '一只托管中的宠物从半开的门溜了出去': ['lobby', 'courtyard'],
+      '同一把备用钥匙同时被两个委托需要': ['lobby'],
+    } : {
+      'the lift stops while a heavy parcel still needs delivery': ['lobby'],
+      'rain begins entering the shared lobby before the umbrella returns': ['lobby'],
+      'a medicine pickup suddenly becomes urgent': ['lobby', 'bus-stop'],
+      'a pet in temporary care slips through a half-open door': ['lobby', 'courtyard'],
+      'two open requests need the same spare key at once': ['lobby'],
+    },
     methods: zh
       ? ['请另一位居民分担任务', '归还或交接手里的公共物品', '暂停并换一条更安全的实际路线']
       : ['ask another resident to share the task', 'return or hand off the shared item', 'pause and choose a safer practical route'],

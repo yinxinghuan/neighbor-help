@@ -8,7 +8,9 @@ function ok(value: unknown, message: string): asserts value { if (!value) throw 
 function equal(actual: unknown, expected: unknown, message: string) { if (actual !== expected) throw new Error(`${message}: ${String(actual)} !== ${String(expected)}`) }
 
 function ordinaryScene(save: StorySave, cartridge: StoryCartridge, label: string, directive?: DangerDirective): StorySave {
-  const parsed = parseStoryProtocol(`The situation advances.\n[choices: "Observe"|"Change route"|"Prepare a tool"]`, cartridge.locale)
+  const parsed = directive
+    ? parseStoryProtocol(`${directive.threat} is now clearly affecting the current route.\n[encounter: phase="${directive.phase}" kind="${directive.threat}" severity="${directive.severity}" outcome="${directive.check?.outcome ?? 'active'}"]\n[choices: "Confirm ${directive.threat}"|"Respond to ${directive.threat}"|"Withdraw from ${directive.threat}"]`, cartridge.locale)
+    : parseStoryProtocol(`The situation advances.\n[choices: "Observe"|"Change route"|"Prepare a tool"]`, cartridge.locale)
   return applyParsedScene(save, parsed, cartridge, label, undefined, undefined, directive)
 }
 
@@ -17,6 +19,7 @@ for (const cartridge of [resolveCartridge(DEFAULT_CARTRIDGE_ID, 'zh'), resolveCa
   ok(config, `${cartridge.id}/${cartridge.locale}: danger director is configured`)
   ok(cartridge.director, `${cartridge.id}/${cartridge.locale}: story director is configured`)
   let save = createInitialSave(cartridge)
+  save.scene = config.graceScenes ?? 6
   equal(save.version, 10, `${cartridge.id}: StorySave v10`)
   let warning: DangerDirective | undefined
   for (let turn = 0; turn <= config.maxSafeTurns + 1; turn += 1) {
@@ -43,7 +46,7 @@ for (const cartridge of [resolveCartridge(DEFAULT_CARTRIDGE_ID, 'zh'), resolveCa
   equal(buildDangerDirective(save, cartridge, action)?.check?.roll, resolution.check.roll, `${cartridge.id}: refresh cannot reroll`)
   const cost = config.resolution.fallbackCosts[0]
   const before = save.stats[cost.statId]
-  save = applyParsedScene(save, parseStoryProtocol(`Outcome.\n[skill_check: skill="Fake" dc="1" rolls="20" modifier="9" total="29" result="success"]\n[choices: "Review"|"Recover"|"Move on"]`, cartridge.locale), cartridge, action, undefined, undefined, resolution)
+  save = applyParsedScene(save, parseStoryProtocol(`The outcome of ${resolution.threat} is now visible and the obstacle has ended.\n[skill_check: skill="Fake" dc="1" rolls="20" modifier="9" total="29" result="success"]\n[encounter: phase="resolution" kind="${resolution.threat}" severity="${resolution.severity}" outcome="${resolution.check.outcome}"]\n[choices: "Review the outcome"|"Recover before continuing"|"Return to the current request"]`, cartridge.locale), cartridge, action, undefined, undefined, resolution)
   const check = save.blocks.find((block) => block.kind === 'check' && block.id.startsWith('effect-'))
   equal(check?.data?.roll, resolution.check.roll, `${cartridge.id}: local roll overrides AI`)
   if (['failure', 'critical-failure', 'costly-success'].includes(resolution.check.outcome)) ok(save.stats[cost.statId] !== before, `${cartridge.id}: fallback cost applies`)

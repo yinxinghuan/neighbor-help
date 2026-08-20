@@ -86,9 +86,16 @@ export interface StoryDangerDirector {
   minSafeTurns: number
   maxSafeTurns: number
   cooldownTurns: number
+  /** Calm scenes before scheduled danger may begin. Immediate visible threats
+   * still bypass this grace period through encounter validation. */
+  graceScenes?: number
   escalationStats: string[]
   threatPalette: string[]
+  /** Optional map-node allowlist per exact threat label. */
+  threatLocations?: Record<string, string[]>
   methods: [string, string, string]
+  /** Old saved button labels retained only for idempotent migration. */
+  legacyMethods?: Array<[string, string, string]>
   physicalCombat: 'none' | 'rare' | 'occasional'
   resolution: {
     skill: string

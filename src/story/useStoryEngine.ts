@@ -6,12 +6,12 @@ import { aigramAdapter } from './adapters/aigram'
 import { mockAdapter } from './adapters/mock'
 import { remoteAdapter } from './adapters/remote'
 import { resolveCartridge } from './cartridges'
-import { applyConsistencyRecovery, applyParsedScene, createChoiceRecordBlock, createImageBlock, createInitialSave, createRecoveryChoices, localizeKnownState, normalizeCharacterState, repairLegacyConsistencyRecovery, updateImageBlock, updateInventoryItemImage } from './engine/reducer'
+import { applyConsistencyRecovery, applyConsistencyRecoverySelection, applyParsedScene, createChoiceRecordBlock, createImageBlock, createInitialSave, createRecoveryChoices, localizeKnownState, normalizeCharacterState, repairLegacyConsistencyRecovery, resolveConsistencyRecoverySelection, updateImageBlock, updateInventoryItemImage } from './engine/reducer'
 import { isStoryProtocolResidue, parseStoryProtocol } from './engine/protocol'
 import { canonicalizePaymentMetadata, validatePaymentConsistency } from './engine/paymentConsistency'
 import { canonicalizeTurnMetadata, validateTurnConsistency } from './engine/turnConsistency'
 import { shouldUsePlayerImageReference, upgradePendingSceneImagePrompts } from './engine/imageDirector'
-import { buildDangerDirective, normalizeDangerState } from './engine/dangerDirector'
+import { buildDangerDirective, createDangerFallbackScene, normalizeDangerState, repairLegacyDangerLoopChoices } from './engine/dangerDirector'
 import { domainOwnsDanger, resolveDomainAction, syncDomainDerivedState } from './engine/domainRules'
 import { t } from './i18n'
 import { ITEM_IMAGE_STYLE_VERSION, type AdapterProgress, type InventoryItem, type Locale, type StoryArchive, type StoryCartridge, type StoryMode, type StorySave } from './types'
@@ -86,7 +86,11 @@ function recoverPersistedChoices(candidate: LegacyStorySave, cartridge: StoryCar
 function normalizeSave(candidate: LegacyStorySave | null | undefined, cartridge: StoryCartridge, incomingChatId?: string): StorySave {
   if (!candidate || candidate.cartridgeId !== cartridge.id || !Array.isArray(candidate.blocks)) return createInitialSave(cartridge, incomingChatId)
   if (incomingChatId && candidate.remoteChatId && candidate.remoteChatId !== incomingChatId) return createInitialSave(cartridge, incomingChatId)
-  const repaired = repairLegacyConsistencyRecovery(recoverPersistedChoices(repairMockLoop(candidate, cartridge), cartridge), cartridge)
+  const consistencyRepaired = repairLegacyConsistencyRecovery(recoverPersistedChoices(repairMockLoop(candidate, cartridge), cartridge), cartridge)
+  const repaired = repairLegacyDangerLoopChoices({
+    ...consistencyRepaired,
+    danger: normalizeDangerState(consistencyRepaired.danger),
+  }, cartridge)
   let blocks = repaired.blocks.filter((block) => !(block.kind === 'narration' && isStoryProtocolResidue(block.text)))
   if (!blocks.some((block) => block.kind === 'image')) {
     const legacyPrompt = repaired.imagePrompt?.trim() ?? ''
@@ -262,6 +266,15 @@ export function useStoryEngine(cartridge: StoryCartridge, initialMode: StoryMode
     try {
       const adapter = mode === 'remote' ? remoteAdapter : mode === 'aigram' ? aigramAdapter : mockAdapter
       const base = localizeKnownState(saveRef.current, cartridge, activeCartridge)
+      const recoverySelection = resolveConsistencyRecoverySelection(base, normalizedAction)
+      if (recoverySelection) {
+        commit((current) => applyConsistencyRecoverySelection(
+          localizeKnownState(current, cartridge, activeCartridge), activeCartridge, normalizedAction, recoverySelection,
+        ))
+        setPendingAction('')
+        setProgress(null)
+        return
+      }
       const domainResolution = resolveDomainAction(base, activeCartridge, normalizedAction)
       const dangerDirective = domainResolution?.status === 'rejected' || domainOwnsDanger(domainResolution) ? undefined : buildDangerDirective(base, activeCartridge, normalizedAction)
       let result = domainResolution
@@ -275,7 +288,7 @@ export function useStoryEngine(cartridge: StoryCartridge, initialMode: StoryMode
         if (canonical.discardedImage) result = { ...result, imagePrompt: undefined, imageSubject: undefined }
         const violations = [
           ...validatePaymentConsistency(base, parsed, activeCartridge),
-          ...(mode === 'demo' ? [] : validateTurnConsistency(base, parsed, activeCartridge, result.imagePrompt)),
+          ...(mode === 'demo' ? [] : validateTurnConsistency(base, parsed, activeCartridge, result.imagePrompt, dangerDirective)),
         ]
         if (violations.length) {
           setProgress({ label: t(actionLocale, 'checkingState'), percent: 82 })
@@ -290,9 +303,23 @@ export function useStoryEngine(cartridge: StoryCartridge, initialMode: StoryMode
           if (canonical.discardedImage) result = { ...result, imagePrompt: undefined, imageSubject: undefined }
           const remaining = [
             ...validatePaymentConsistency(base, parsed, activeCartridge),
-            ...(mode === 'demo' ? [] : validateTurnConsistency(base, parsed, activeCartridge, result.imagePrompt)),
+            ...(mode === 'demo' ? [] : validateTurnConsistency(base, parsed, activeCartridge, result.imagePrompt, dangerDirective)),
           ]
           if (remaining.length) {
+            if (dangerDirective) {
+              commit((current) => applyParsedScene(
+                localizeKnownState(current, cartridge, activeCartridge),
+                createDangerFallbackScene(base, activeCartridge, dangerDirective),
+                activeCartridge,
+                normalizedAction,
+                undefined,
+                undefined,
+                dangerDirective,
+              ))
+              setPendingAction('')
+              setProgress(null)
+              return
+            }
             commit((current) => applyConsistencyRecovery(localizeKnownState(current, cartridge, activeCartridge), activeCartridge, normalizedAction))
             setPendingAction('')
             setProgress(null)

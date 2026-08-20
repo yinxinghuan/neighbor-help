@@ -1,4 +1,5 @@
-import type { ParsedCommand, ParsedScene, StoryCartridge, StorySave } from '../types'
+import type { DangerDirective, ParsedCommand, ParsedScene, StoryCartridge, StorySave } from '../types'
+import { dangerDirectiveEstablished, dangerTextGrounded } from './dangerDirector'
 
 function clean(value: string): string {
   return value.toLocaleLowerCase().replace(/[\s，。！？、,.!?;；:："“”'‘’()（）\-—_/]+/g, '')
@@ -11,6 +12,10 @@ function effectiveLocation(save: StorySave, parsed: ParsedScene): string {
 
 function visibleProse(parsed: ParsedScene): string {
   return parsed.blocks.filter((block) => block.kind === 'narration' || block.kind === 'dialogue').map((block) => block.text).join('\n')
+}
+
+function threadGrounded(thread: string, text: string, locale: StoryCartridge['locale']): boolean {
+  return dangerTextGrounded(thread, text, locale) || dangerTextGrounded(text, thread, locale)
 }
 
 function newTaskCue(locale: StoryCartridge['locale']): RegExp {
@@ -70,10 +75,21 @@ function validChoices(parsed: ParsedScene): string[] {
 
 function stalePlaceChoice(choice: string, location: string, save: StorySave): boolean {
   const destinationVerb = /(?:前往|去往|去|返回|回到|搭乘|乘坐|买票|离开|赶往|travel|go to|head to|return|ride|take .* to|leave for)/i
-  return save.map.some((node) => node.label !== location && clean(choice).includes(clean(node.label)) && !destinationVerb.test(choice))
+  const mapChanged = clean(location) !== clean(save.location)
+  return save.map.some((node) => (mapChanged || !node.current)
+    && clean(node.label) !== clean(location)
+    && !clean(location).includes(clean(node.label))
+    && clean(choice).includes(clean(node.label))
+    && !destinationVerb.test(choice))
 }
 
-export function validateTurnConsistency(save: StorySave, parsed: ParsedScene, cartridge: StoryCartridge, imagePrompt?: string): string[] {
+export function validateTurnConsistency(
+  save: StorySave,
+  parsed: ParsedScene,
+  cartridge: StoryCartridge,
+  imagePrompt?: string,
+  dangerDirective?: DangerDirective,
+): string[] {
   const violations = new Set<string>()
   const location = effectiveLocation(save, parsed)
   const sceneLocations = parsed.commands.filter((command): command is Extract<ParsedCommand, { type: 'scene_location' }> => command.type === 'scene_location')
@@ -81,6 +97,7 @@ export function validateTurnConsistency(save: StorySave, parsed: ParsedScene, ca
   const mapUpdates = parsed.commands.filter((command) => command.type === 'map_update')
   const choices = validChoices(parsed)
   const prose = visibleProse(parsed)
+  const encounters = parsed.commands.filter((command): command is Extract<ParsedCommand, { type: 'encounter' }> => command.type === 'encounter')
 
   if (sceneLocations.length !== 1) violations.add('turn.requires_one_scene_location')
   else if (clean(sceneLocations[0].location) !== clean(location)) violations.add('turn.scene_location_must_match_state')
@@ -94,9 +111,35 @@ export function validateTurnConsistency(save: StorySave, parsed: ParsedScene, ca
   if (!parsed.commands.some((command) => command.type === 'session_end') && !choices.length) violations.add('turn.requires_actionable_choices')
   if (choices.some((choice) => stalePlaceChoice(choice, location, save))) violations.add('choices.cannot_act_in_stale_location')
 
+  if (encounters.some((encounter) => encounter.phase !== 'resolution'
+    && (!encounter.kind || !threadGrounded(encounter.kind, prose, cartridge.locale)))) {
+    violations.add('turn.encounter_must_match_visible_threat')
+  }
+  if (save.danger.phase !== 'calm') {
+    const activeThreat = save.danger.currentThreat ?? ''
+    if (!encounters.length) violations.add('turn.active_threat_requires_continuation')
+    else {
+      const sameThread = Boolean(activeThreat) && encounters.some((encounter) => Boolean(encounter.kind)
+        && threadGrounded(activeThreat, encounter.kind ?? '', cartridge.locale))
+      if (!sameThread || !threadGrounded(activeThreat, prose, cartridge.locale)) violations.add('turn.active_threat_cannot_disappear')
+    }
+  }
+  if (dangerDirective) {
+    if (!dangerDirectiveEstablished(parsed, dangerDirective, cartridge.locale)) {
+      violations.add('turn.scheduled_threat_requires_visible_establishment')
+    }
+    if (dangerDirective.phase !== 'resolution'
+      && choices.length
+      && choices.some((choice) => !dangerTextGrounded(dangerDirective.threat, choice, cartridge.locale))) {
+      violations.add('turn.scheduled_threat_choices_must_address_threat')
+    }
+  }
+
   if (newTaskCue(cartridge.locale).test(prose) && !parsed.commands.some((command) => command.type === 'state')) violations.add('turn.new_task_requires_objective_state')
 
-  const arrivedAtOtherKnownPlace = save.map.some((node) => clean(node.label) !== clean(save.location)
+  const arrivedAtOtherKnownPlace = save.map.some((node) => !node.current
+    && clean(node.label) !== clean(save.location)
+    && !clean(save.location).includes(clean(node.label))
     && prose.split(/(?<=[。！？.!?])|\n+/).some((sentence) => clean(sentence).includes(clean(node.label))
       && /(?:抵达|到达|来到|走进|进入|已经在|身处|下车|arriv|reach|enter|step into|now in|get off)/i.test(sentence)))
   if (arrivedAtOtherKnownPlace && !mapUpdates.length) violations.add('turn.visible_arrival_requires_map_update')
