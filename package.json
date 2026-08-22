@@ -14,6 +14,7 @@
     "test:danger": "node --import tsx _qa/danger-director.ts",
     "test:danger-grounding": "node --import tsx _qa/danger-grounding.ts",
     "test:danger-loop": "node --import tsx _qa/danger-loop-recovery.ts",
+    "test:loop-escape": "node --import tsx _qa/loop-escape.ts",
     "test:payment": "node --import tsx _qa/payment-consistency.ts",
     "test:turn": "node --import tsx _qa/turn-consistency.ts",
     "test:character-debut": "node --import tsx _qa/character-debut.ts",

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { neighborHelp } from '../src/story/cartridges/neighborHelp'
 import { repairLegacyDangerLoopChoices } from '../src/story/engine/dangerDirector'
 import { decodeChoiceRecord } from '../src/story/engine/choiceInput'
-import { applyConsistencyRecovery, applyConsistencyRecoverySelection, createChoiceRecordBlock, createInitialSave, resolveConsistencyRecoverySelection } from '../src/story/engine/reducer'
+import { applyConsistencyRecovery, createChoiceRecordBlock, createInitialSave } from '../src/story/engine/reducer'
 
 const threat = '路口红灯一直不变，车流挡住了送伞路线'
 const attempted = '等红灯变绿后继续把雨伞送到公交站'
@@ -11,15 +11,10 @@ active.scene = 8
 active.danger = { phase: 'confrontation', safeTurns: 0, cycle: 1, cooldownTurns: 0, severity: 3, currentThreat: threat, lastOutcome: 'none' }
 
 const recovery = applyConsistencyRecovery(active, neighborHelp, attempted)
-assert.equal(recovery.choices.length, 2)
+assert.equal(recovery.choices.length, 3)
 assert(!recovery.choices.some((choice) => choice.label === attempted), 'failed action must be quarantined from the tray')
-const selection = resolveConsistencyRecoverySelection(recovery, recovery.choices[0]!.label)
-assert(selection, 'the recovery exit is resolved locally')
-const exited = applyConsistencyRecoverySelection(recovery, neighborHelp, recovery.choices[0]!.label, selection!)
-assert.equal(exited.danger.phase, 'confrontation')
-assert.equal(exited.choices.length, 3)
-assert(exited.choices.every((choice) => choice.label.includes('红灯') || choice.label.includes('车流')), 'every exit names the active threat')
-assert(!exited.choices.some((choice) => choice.label === attempted), 'the original failed action does not return')
+assert.equal(recovery.danger.phase, 'confrontation')
+assert(recovery.choices.every((choice) => choice.label.includes('红灯') || choice.label.includes('车流')), 'every surviving recommendation names the active threat')
 
 const legacyChoices = [
   { id: 'recovery-8-0', label: attempted },
@@ -36,4 +31,4 @@ assert(migrated.choices.every((choice) => choice.label.includes('红灯') || cho
 assert.deepEqual(decodeChoiceRecord(migrated.blocks.find((block) => block.id === `choices-${migrated.scene}`)!.text), migrated.choices.map((choice) => choice.label))
 assert.deepEqual(repairLegacyDangerLoopChoices(migrated, neighborHelp), migrated, 'migration is idempotent')
 
-console.log(JSON.stringify({ ok: true, checks: ['failed-action-quarantined', 'local-recovery-exit', 'threat-specific-options', 'legacy-save-migration'] }))
+console.log(JSON.stringify({ ok: true, checks: ['failed-action-quarantined', 'threat-specific-options', 'legacy-save-migration'] }))

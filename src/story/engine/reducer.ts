@@ -4,7 +4,7 @@ import { chooseSceneImage } from './imageDirector'
 import { contextualDangerChoiceLabels, createInitialDangerState, normalizeDangerState, settleDangerTurn } from './dangerDirector'
 import { authoredDecisionContext, choicesAreGrounded, createTransitionBlock } from './continuity'
 import { applyDomainResolution, domainAllowsModelCommand, syncDomainDerivedState } from './domainRules'
-import { encodeChoiceRecord } from './choiceInput'
+import { decodeChoiceRecord, encodeChoiceRecord } from './choiceInput'
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -292,6 +292,39 @@ function createActionRecoveryChoices(
   return labels.map((label, index) => ({ id: `recovery-${save.scene}-${index}`, label }))
 }
 
+export function shouldRestoreGenericChoices(save: Pick<StorySave, 'sessionEnded' | 'choices' | 'facts'>): boolean {
+  return !save.sessionEnded && save.choices.length === 0 && !save.facts.consistency_quarantined_action
+}
+
+function isSyntheticConsistencyAction(value: string): boolean {
+  return /^(?:查看.+现在能做的事|放弃原计划，改走别的路|See what is actually possible at .+|Set the original plan aside and take another route)$/i.test(value.trim())
+}
+
+function quarantinedSiblingChoices(
+  choices: StorySave['choices'], failedAction: string, objective: string, scene: number,
+): StorySave['choices'] {
+  const failed = failedAction.trim()
+  const target = objective.trim()
+  return choices
+    .filter((choice) => choice.label.trim() !== failed)
+    .filter((choice) => !target || choice.label.trim() !== target)
+    .filter((choice) => !isSyntheticConsistencyAction(choice.label))
+    .filter((choice, index, all) => all.findIndex((entry) => entry.label.trim() === choice.label.trim()) === index)
+    .slice(0, 5)
+    .map((choice, index) => ({ ...choice, id: `quarantine-${scene}-${index}` }))
+}
+
+function latestChoiceRecordBefore(save: Pick<StorySave, 'blocks'>, scene: number): StorySave['choices'] {
+  const record = [...save.blocks].reverse().find((block) => {
+    if (block.kind !== 'choices') return false
+    const match = block.id.match(/^choices-(\d+)$/)
+    return Boolean(match && Number(match[1]) < scene)
+  })
+  return record?.kind === 'choices'
+    ? decodeChoiceRecord(record.text).map((label, index) => ({ id: `legacy-sibling-${scene}-${index}`, label }))
+    : []
+}
+
 function consistencyActions(save: Pick<StorySave, 'blocks'>): Map<number, string> {
   const actions = new Map<number, string>()
   save.blocks.forEach((block) => {
@@ -304,12 +337,11 @@ function consistencyActions(save: Pick<StorySave, 'blocks'>): Map<number, string
 function rootConsistencyAction(save: Pick<StorySave, 'scene' | 'blocks' | 'lastActionId'>, actionId?: string): string {
   const actions = consistencyActions(save)
   let action = actionId?.trim() || actions.get(save.scene) || save.lastActionId?.trim() || ''
-  const synthetic = /^(?:查看.+现在能做的事|放弃原计划，改走别的路|See what is actually possible at .+|Set the original plan aside and take another route)$/i
-  if (!synthetic.test(action)) return action
+  if (!isSyntheticConsistencyAction(action)) return action
   for (let scene = save.scene; scene >= 0; scene -= 1) {
     if (!save.blocks.some((block) => block.id === `consistency-recovery-${scene}`)) continue
     const previous = actions.get(scene)
-    if (previous && !synthetic.test(previous)) return previous
+    if (previous && !isSyntheticConsistencyAction(previous)) return previous
   }
   return action
 }
@@ -331,10 +363,11 @@ export function applyConsistencyRecoverySelection(
   selection: { mode: 'confirm' | 'pause'; originalAction: string },
 ): StorySave {
   const scene = save.scene + 1
-  const choices = createRecoveryChoices({ ...save, scene }, cartridge)
-    .map((choice, index) => ({ ...choice, id: `recovery-exit-${scene}-${index}` }))
-    .filter((choice, index, all) => all.findIndex((entry) => entry.label === choice.label) === index)
-    .slice(0, 5)
+  const previous = latestChoiceRecordBefore(save, save.scene)
+  const choices = save.danger.phase !== 'calm' && cartridge.dangerDirector
+    ? contextualDangerChoiceLabels(save.danger.currentThreat, cartridge.dangerDirector.methods, cartridge.locale)
+      .map((label, index) => ({ id: `danger-recovery-${scene}-${index}`, label }))
+    : quarantinedSiblingChoices(previous, selection.originalAction, save.objective, scene)
   return {
     ...save,
     scene,
@@ -366,7 +399,10 @@ export function applyConsistencyRecoverySelection(
 export function applyConsistencyRecovery(save: StorySave, cartridge: StoryCartridge, actionId: string): StorySave {
   const scene = save.scene + 1
   const originalAction = rootConsistencyAction(save, actionId)
-  const choices = createActionRecoveryChoices({ ...save, scene }, cartridge)
+  const choices = save.danger.phase !== 'calm' && cartridge.dangerDirector
+    ? contextualDangerChoiceLabels(save.danger.currentThreat, cartridge.dangerDirector.methods, cartridge.locale)
+      .map((label, index) => ({ id: `danger-recovery-${scene}-${index}`, label }))
+    : quarantinedSiblingChoices(save.choices, originalAction, save.objective, scene)
   return {
     ...save,
     scene,
@@ -378,12 +414,13 @@ export function applyConsistencyRecovery(save: StorySave, cartridge: StoryCartri
       ...save.facts,
       consistency_quarantined_action: originalAction,
       consistency_quarantined_location: save.location,
+      'consistency-quarantine-v2': true,
     },
     choices,
     blocks: [
       ...save.blocks,
       { id: `action-${scene}`, kind: 'event', text: originalAction },
-      { id: `consistency-recovery-${scene}`, kind: 'narration', text: t(cartridge.locale, 'consistencyRecovery', { name: save.location, action: originalAction }) },
+      { id: `consistency-recovery-${scene}`, kind: 'narration', text: t(cartridge.locale, 'consistencyRecovery', { name: save.location, action: originalAction }), data: { consistencyQuarantine: 'true' } },
       createChoiceRecordBlock(scene, choices),
     ],
   }
@@ -397,7 +434,9 @@ export function repairLegacyConsistencyRecovery<T extends {
   blocks: StorySave['blocks']
   choices: StorySave['choices']
   lastActionId?: string
+  facts?: StorySave['facts']
 }>(candidate: T, cartridge: StoryCartridge): T {
+  if (candidate.facts?.['consistency-quarantine-v2'] === true) return candidate
   const actions = new Map<number, string>()
   const recoveryScenes = new Set<number>()
   const recoveryLocations = new Map<number, string>()
@@ -459,12 +498,34 @@ export function repairLegacyConsistencyRecovery<T extends {
   const eventTexts = new Set(candidate.blocks.filter((block) => block.kind === 'event' && block.id.startsWith('action-')).map((block) => block.text.trim()))
   const objective = currentWasLegacy && currentAction && eventTexts.has(candidate.objective.trim()) ? currentAction : candidate.objective
   if (objective !== candidate.objective) changed = true
-  return changed ? { ...candidate, objective, choices, blocks } : candidate
+  const aligned = changed ? { ...candidate, objective, choices, blocks } : candidate
+  if (!recoveryScenes.has(aligned.scene) || !currentAction) return aligned
+  const previous = latestChoiceRecordBefore(aligned as unknown as Pick<StorySave, 'blocks'>, aligned.scene)
+  const quarantined = quarantinedSiblingChoices(previous, currentAction, objective, aligned.scene)
+  const recordId = `choices-${aligned.scene}`
+  const migratedBlocks = aligned.blocks.map((block) => {
+    if (block.id === `consistency-recovery-${aligned.scene}` && block.kind === 'narration') {
+      return { ...block, text: t(cartridge.locale, 'consistencyRecovery', { name: currentLocation, action: currentAction }), data: { consistencyQuarantine: 'true' } }
+    }
+    if (block.id === recordId && block.kind === 'choices') return { ...block, text: encodeChoiceRecord(quarantined) }
+    return block
+  })
+  return {
+    ...aligned,
+    choices: quarantined,
+    blocks: migratedBlocks,
+    facts: {
+      ...(aligned.facts ?? {}),
+      consistency_quarantined_action: currentAction,
+      consistency_quarantined_location: currentLocation,
+      'consistency-quarantine-v2': true,
+    },
+  } as T
 }
 
 function validChoiceLabels(labels: string[]): string[] {
   const clean = labels.map((label) => label.trim()).filter((label) => label.length >= 2 && label.length <= 96)
-  return clean.length >= 2 && clean.length <= 5 && new Set(clean).size === clean.length ? clean : []
+  return clean.length >= 1 && clean.length <= 5 && new Set(clean).size === clean.length ? clean : []
 }
 
 function cleanInferredItemLabel(value: string): string {
@@ -682,8 +743,8 @@ export function applyParsedScene(
   // Ordinary scenes must remain playable even when an AI response omits or
   // truncates its machine-readable choices. A real checkpoint may still use
   // the dedicated resume action supplied by the Composer.
-  if (!domainResolution && !next.sessionEnded && next.choices.length >= 2 && !choicesAreGrounded(next.choices, { ...next, choices: save.choices, blocks: [...next.blocks, ...effects] }, cartridge)) next.choices = []
-  if (!next.sessionEnded && next.choices.length < 2) next.choices = createRecoveryChoices(next, cartridge)
+  if (!domainResolution && !next.sessionEnded && next.choices.length >= 1 && !choicesAreGrounded(next.choices, { ...next, choices: save.choices, blocks: [...next.blocks, ...effects] }, cartridge)) next.choices = []
+  if (!next.sessionEnded && next.choices.length === 0) next.choices = quarantinedSiblingChoices(save.choices, actionId, save.objective, next.scene)
 
   const image = chooseSceneImage(save, next, adjudicatedParsed, cartridge, imagePrompt, imageSubject)
   next.blocks = [

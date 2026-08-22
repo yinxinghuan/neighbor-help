@@ -55,7 +55,7 @@ const staleChoice = parseStoryProtocol(`[map_update: new_location="${destination
 [choices: "检查${current}的新变化"|"询问向导"|"等待片刻"]`, 'zh')
 ok(validateTurnConsistency(initial, staleChoice, cartridge).includes('choices.cannot_act_in_stale_location'), 'choice cannot silently act in the previous location')
 
-const action = `前往${destination}寻找失踪的向导`
+const action = initial.choices[0].label
 const recovery = applyConsistencyRecovery(initial, cartridge, action)
 equal(recovery.scene, initial.scene + 1, 'consistency recovery records exactly one attempted turn')
 equal(recovery.location, initial.location, 'recovery cannot teleport the player')
@@ -66,14 +66,14 @@ ok(recovery.blocks.some((block) => block.id === `consistency-recovery-${recovery
 const recoveryRecord = recovery.blocks.find((block) => block.id === `choices-${recovery.scene}`)
 equal(recoveryRecord?.kind, 'choices', 'recovery persists its visible choice record')
 equal(decodeChoiceRecord(recoveryRecord?.text ?? '')[0], recovery.choices[0]?.label, 'saved recovery choice record matches the safe exit')
-const recoverySelection = resolveConsistencyRecoverySelection(recovery, recovery.choices[0]!.label)
-ok(recoverySelection, 'recovery exit resolves without another model turn')
-const exitedRecovery = applyConsistencyRecoverySelection(recovery, cartridge, recovery.choices[0]!.label, recoverySelection!)
-equal(exitedRecovery.scene, recovery.scene + 1, 'local recovery exit advances exactly once')
-ok(!exitedRecovery.choices.some((choice) => choice.label === action), 'local recovery exit does not restore the quarantined action')
+const secondFailed = recovery.choices[0]!.label
+const narrowedRecovery = applyConsistencyRecovery(recovery, cartridge, secondFailed)
+equal(narrowedRecovery.choices.length, recovery.choices.length - 1, 'a second failure strictly shrinks the recommendation set')
+ok(!narrowedRecovery.choices.some((choice) => choice.label === action || choice.label === secondFailed), 'neither failed action returns')
 
 const legacy = {
   ...recovery,
+  facts: {},
   objective: action,
   choices: recovery.choices.map((choice, index) => ({ ...choice, label: index === 0 ? `观察${initial.location}的新变化` : choice.label })),
   blocks: recovery.blocks.map((block) => block.id === `consistency-recovery-${recovery.scene}`
@@ -86,4 +86,4 @@ ok(!migrated.choices.some((choice) => choice.label === action), 'legacy generic 
 equal(decodeChoiceRecord(migrated.blocks.find((block) => block.id === `choices-${migrated.scene}`)?.text ?? '')[0], migrated.choices[0]?.label, 'legacy saved choice record matches the migrated safe exit')
 equal(repairLegacyConsistencyRecovery(migrated, cartridge), migrated, 'legacy migration is idempotent')
 
-console.log(JSON.stringify({ ok: true, checks: ['metadata-canonicalization', 'image-discard', 'objective-grounding', 'stale-place-choice-rejected', 'quarantined-recovery', 'local-recovery-exit', 'legacy-recovery-migration'] }))
+console.log(JSON.stringify({ ok: true, checks: ['metadata-canonicalization', 'image-discard', 'objective-grounding', 'stale-place-choice-rejected', 'quarantined-recovery', 'strictly-shrinking-recovery', 'legacy-recovery-migration'] }))

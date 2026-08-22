@@ -6,7 +6,7 @@ import { aigramAdapter } from './adapters/aigram'
 import { mockAdapter } from './adapters/mock'
 import { remoteAdapter } from './adapters/remote'
 import { resolveCartridge } from './cartridges'
-import { applyConsistencyRecovery, applyConsistencyRecoverySelection, applyParsedScene, createChoiceRecordBlock, createImageBlock, createInitialSave, createRecoveryChoices, localizeKnownState, normalizeCharacterState, repairLegacyConsistencyRecovery, resolveConsistencyRecoverySelection, updateImageBlock, updateInventoryItemImage } from './engine/reducer'
+import { applyConsistencyRecovery, applyConsistencyRecoverySelection, applyParsedScene, createChoiceRecordBlock, createImageBlock, createInitialSave, createRecoveryChoices, localizeKnownState, normalizeCharacterState, repairLegacyConsistencyRecovery, resolveConsistencyRecoverySelection, shouldRestoreGenericChoices, updateImageBlock, updateInventoryItemImage } from './engine/reducer'
 import { isStoryProtocolResidue, parseStoryProtocol } from './engine/protocol'
 import { canonicalizePaymentMetadata, validatePaymentConsistency } from './engine/paymentConsistency'
 import { canonicalizeTurnMetadata, validateTurnConsistency } from './engine/turnConsistency'
@@ -132,7 +132,7 @@ function normalizeSave(candidate: LegacyStorySave | null | undefined, cartridge:
     danger: normalizeDangerState(repaired.danger), jobs: (repaired.jobs ?? []).map((job) => ({ ...job })),
     facts: { ...(cartridge.initialFacts ?? {}), ...(repaired.facts ?? {}) },
   } as StorySave
-  if (!normalized.sessionEnded && normalized.choices.length < 2) normalized.choices = createRecoveryChoices(normalized, cartridge)
+  if (shouldRestoreGenericChoices(normalized)) normalized.choices = createRecoveryChoices(normalized, cartridge)
   if (!normalized.sessionEnded && normalized.choices.length && !normalized.blocks.some((block) => block.id === `choices-${normalized.scene}`)) {
     normalized.blocks = [...normalized.blocks, createChoiceRecordBlock(normalized.scene, normalized.choices)]
   }
@@ -283,7 +283,7 @@ export function useStoryEngine(cartridge: StoryCartridge, initialMode: StoryMode
       let parsed = parseStoryProtocol(result.content, actionLocale)
       if (!domainResolution) {
         parsed = canonicalizePaymentMetadata(base, parsed, activeCartridge, normalizedAction)
-        let canonical = canonicalizeTurnMetadata(base, parsed, activeCartridge, result.imagePrompt)
+        let canonical = canonicalizeTurnMetadata(base, parsed, activeCartridge, result.imagePrompt, normalizedAction)
         parsed = canonical.parsed
         if (canonical.discardedImage) result = { ...result, imagePrompt: undefined, imageSubject: undefined }
         const violations = [
@@ -298,7 +298,7 @@ export function useStoryEngine(cartridge: StoryCartridge, initialMode: StoryMode
           }, setProgress)
           parsed = parseStoryProtocol(result.content, actionLocale)
           parsed = canonicalizePaymentMetadata(base, parsed, activeCartridge, normalizedAction)
-          canonical = canonicalizeTurnMetadata(base, parsed, activeCartridge, result.imagePrompt)
+          canonical = canonicalizeTurnMetadata(base, parsed, activeCartridge, result.imagePrompt, normalizedAction)
           parsed = canonical.parsed
           if (canonical.discardedImage) result = { ...result, imagePrompt: undefined, imageSubject: undefined }
           const remaining = [

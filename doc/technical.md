@@ -37,7 +37,9 @@
 
 界面以 390×844 为主并覆盖 320×568。公告列表使用 `onClick` 保留滚动，功能图标为统一线性 SVG，关系入口保持无文字笔记本图标。中英文共享同一地域中性视觉资产；生成图不承担公告文字或地点标签。
 
-危险指令在写入 reducer 前经过双层保护。`validateTurnConsistency()` 要求可见正文、`encounter` 阶段/威胁和系统选项指向同一事实；`settleDangerTurn()` 再次验证后才允许推进 `warning → confrontation → resolution`。活跃威胁不能被无关正文或选项清空。生成结果连续校验失败时，`applyConsistencyRecovery()` 隔离失败动作，只显示两个本地恢复出口；`applyConsistencyRecoverySelection()` 不调用模型，直接返回当前威胁的确认、应对和撤离选项。危险指令经过一次模型修复仍不合格时，`createDangerFallbackScene()` 生成同一阶段、同一威胁和本地固定判定的最小可玩结果，保证模型故障不能软锁状态机。`repairLegacyDangerLoopChoices()` 在读档时同步修复当前菜单和当前场景的不可变选择记录。
+危险指令在写入 reducer 前经过双层保护。`validateTurnConsistency()` 要求可见正文、`encounter` 阶段/威胁和系统选项指向同一事实；`settleDangerTurn()` 再次验证后才允许推进 `warning → confrontation → resolution`。活跃威胁不能被无关正文或选项清空。生成结果连续校验失败时，`applyConsistencyRecovery()` 隔离失败动作，并直接保留当前威胁的确认、应对和撤离选项，不再先经过两个通用本地恢复出口。危险指令经过一次模型修复仍不合格时，`createDangerFallbackScene()` 生成同一阶段、同一威胁和本地固定判定的最小可玩结果，保证模型故障不能软锁状态机。`repairLegacyDangerLoopChoices()` 在读档时同步修复当前菜单和当前场景的不可变选择记录。
+
+普通个人叙事推荐使用 `consistency-quarantine-v2` 隔离：失败动作从提交前选择记录中删除，仍可信的兄弟选项保持顺序，连续失败时集合严格缩小；没有兄弟选项时允许零快捷栏并保留自由输入。`turnConsistency.ts` 同时过滤没有权威进展时对同一物件换动词的语义重试。该逻辑只写个人 StorySave；共享世界的委托、唯一物品、事件、cursor 与回执仍完全由 `shared-world/` 和 Worker 权威事务决定。`_qa/loop-escape.ts` 与既有共享世界、回执、断线恢复测试共同证明两层没有互相回滚。
 
 ## 4. 扩展点
 
