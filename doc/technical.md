@@ -58,3 +58,6 @@
 - `RemoteSharedWorldGateway.commit()` 将一次用户意图生成的 `action_id` 固定在整个请求生命周期。网络断开或响应丢失时只用同一个 ID 重试，Worker 通过 processed-action 缓存返回原结果，禁止重新生成 ID 导致重复领取、转交或完成。
 - 若连续两次响应都丢失，客户端先读取权威事件流并按 `actionId` 对账；发现事件即按已提交恢复 UI，回执仍由 `listPendingReceipts → 个人云存档读回确认 → ack` 独立恢复。HTTP/规则错误属于权威拒绝，不做模糊重试。
 - `npm run test:gateway-recovery` 同时覆盖本地游标重连、重复提交、回执 ack，以及远端“服务端已提交但首个响应丢失”时 action id 稳定且只执行一次。
+## 2026-08-23 混合音频升级
+
+客户端新增本作专属的社区主题与公寓环境声，即时交互继续使用 Web Audio。声音属于本地呈现而非共享世界权威：多人事件提交后才可按事件 id 去重播放，重连不批量重放旧声音，音频失败也不影响 action/receipt/save。

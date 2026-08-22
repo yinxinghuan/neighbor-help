@@ -2,6 +2,8 @@ import type { StoryCartridge, StoryDangerDirector, StoryDirector, StoryImageDire
 
 const coverImage = new URL('../img/worlds/neighbor-help-cover.png', import.meta.url).href
 const entryImage = new URL('../img/worlds/neighbor-help-entry.png', import.meta.url).href
+const audioThemeUrl = new URL('../audio/assets/theme.mp3', import.meta.url).href
+const audioAmbienceUrl = new URL('../audio/assets/ambience.mp3', import.meta.url).href
 
 function storyDirector(locale: 'zh' | 'en'): StoryDirector {
   const zh = locale === 'zh'
@@ -100,6 +102,7 @@ const shared = {
     softTriggers: ['relationship-change', 'objective-change', 'skill-outcome'],
   } satisfies StoryImageDirector,
   audioTheme: {
+    recorded: { music: { src: audioThemeUrl, gain: .2 }, ambience: { src: audioAmbienceUrl, gain: .3 } },
     material: 'apartment' as const,
     bpm: 66,
     rootHz: 146.83,
